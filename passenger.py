@@ -1,19 +1,23 @@
 class Passenger():
-    def __init__(self, weight, floor):
-        self.weight=weight
+    def __init__(self, weight, floor, destination):
+        self.weight = weight
         self.floor = floor
+        self.destination = destination
+        self.elevator = None
 
     def enter(self, elevator):
         '''
         Input: the elevator that the passenger attempts to enter
-        Checks if elevator is full:
-          if not returns an event to the simulator to be added to queue
-          else returns False
         '''
-        raise NotImplementedError
+        if elevator.enter(self):
+            self.elevator = elevator
+
     
     def leave(self):
         '''
         Returns an event
         '''
         
+    def update_floor(self, floor):
+        '''Allows the elevator to update the floor attribute of the passenger'''
+        self.floor = floor
