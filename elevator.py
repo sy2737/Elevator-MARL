@@ -43,9 +43,10 @@ class Elevator():
         Updates the carrying weight and carrying list
         Returns False if elevator is too full
         '''
-        if passenger.weight + self.carrying_weight <= self.weight_limit:
+        if passenger.weight + self.carrying_weight > self.weight_limit:
             return False
         self.carrying.add(passenger)
+        self.env.psngr_by_fl[self.floor].remove(passenger)
         self.carrying_weight += passenger.weight
         return True
     
@@ -113,5 +114,5 @@ class Elevator():
     def _update_floor(self):
         self.floor += self.state
         for p in self.carrying:
-            self.p.update_floor(self.floor)
+            p.update_floor(self.floor)
 

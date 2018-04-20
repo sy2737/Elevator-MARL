@@ -1,6 +1,7 @@
 import simpy
 from simpy.events import AnyOf
 import random 
+from math import log as Log
 from numpy import sign as Sign
 from passenger import Passenger
 from elevator import Elevator
@@ -14,6 +15,7 @@ def make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, moveSp
     avgWeight:     avg weight of passengers
     weightLimit:   weight limit of the elevators
     loadTime:      avg load time per passenger (offloading, onloading), normal
+                   total load time = 2+norm(log(1+num_loaded)*loadTime, 1)
     moveSpeed:     [move to move, move to stop/stop to move, stop to stop]
     '''
 
@@ -103,16 +105,19 @@ class Environment():
     def generate_loading_event(self, elevator):
         '''Elevator calls this function when it reaches a floor and is ready to load'''
         num_loaded = 0
-        for p in elevator.carrying:
+        carrying = [p for p in elevator.carrying]
+        for p in carrying:
             num_loaded += p.leave_if_arrived()
-        for p in self.psngr_by_fl[elevator.floor]:
+
+        waiting = [p for p in self.psngr_by_fl[elevator.floor]]
+        for p in waiting:
             if Sign(p.destination-elevator.floor) == elevator.state:
                 if p.enter(elevator):
-                    self.psngr_by_fl.remove(p)
                     num_loaded += 1
             
         self._update_hall_calls()
-        return self.simenv.timeout(2+random.normalvariate(num_loaded*self.loadTime, 1))
+        print("Starting to load {} passengers on floor {}".format(num_loaded, elevator.floor))
+        return self.simenv.timeout(2+random.normalvariate(Log(1+num_loaded)*self.loadTime, 1))
 
 
     def get_states(self):
@@ -166,4 +171,22 @@ class Environment():
         options = set(range(self.nFloor))
         options.remove(starting_floor)
         return random.sample(options, 1)[0]
+
+    def render(self):
+        DIR_MAP = {self.elevators[0].IDLE: '-', self.elevators[0].MOVING_UP: '^', self.elevators[0].MOVING_DOWN:'v'}
+
+        for floor in range(self.nFloor-1, -1, -1):
+            num_psngr_going_up = len([p for p in self.psngr_by_fl[floor] if p.destination>p.floor])
+            num_psngr_going_down = len([p for p in self.psngr_by_fl[floor] if p.destination<p.floor])
+
+            string = ""
+            for elevator in self.elevators:
+                if elevator.floor == floor:
+                    string+="|{}{:>2}|".format(DIR_MAP[elevator.state], len(elevator.carrying))
+                else:
+                    string+="|   |"
+            string+="^"*num_psngr_going_up
+            string+="v"*num_psngr_going_down
+            print(string)
+
 
