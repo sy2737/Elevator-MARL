@@ -62,8 +62,8 @@ class Environment():
         #TODO: sinlge->multi
         #self.elevators[self.decision_elevator].act(action)
         # This schedules an event for the next ElevatorArrival event for that elevator
-        
-
+        print("Active Processes:")
+        print(self.simenv.active_process)
         self.simenv.process(self.elevators[0].act(action))
 
         while True:
@@ -128,7 +128,14 @@ class Environment():
         '''
         nPsngrs_by_fl = [len(self.psngr_by_fl[i]) for i in range(self.nFloor)]
         elevator_positions = [e.floor for e in self.elevators]
-        return [nPsngrs_by_fl, self.hall_calls_up, self.hall_calls_down, elevator_positions]
+        elevator_states = [e.state for e in self.elevators]
+        return {
+            "num_psngrs_by_fl": nPsngrs_by_fl,
+            "hall_calls_up": self.hall_calls_up,
+            "hall_calls_down": self.hall_calls_down,
+            "elevator_positions": elevator_positions,
+            "elevator_states": elevator_states
+        }
 
     def reset(self):
         '''
@@ -149,7 +156,18 @@ class Environment():
         return self.get_states()
 
     def _update_hall_calls(self):
-        pass
+        self.hall_calls_up = [0]*self.nFloor
+        self.hall_calls_down = [0]*self.nFloor
+
+        for fl in range(self.nFloor):
+            for p in self.psngr_by_fl[fl]:
+                if p.destination > fl:
+                    self.hall_calls_up[fl] = 1
+                elif p.destination < fl:
+                    self.hall_calls_down[fl] = 1
+                else:
+                    raise ValueError("Passenger's floor is equal to the destination?")
+            
 
     def trigger_epoch_event(self, event_type):
         self.epoch_events[event_type].succeed(event_type)
@@ -168,11 +186,21 @@ class Environment():
 
 
     def _destination(self, starting_floor):
+        '''
+        Generates destination given starting floor
+        '''
+        # TODO: this distribution needs to be more sophisticated. ie: first floor
         options = set(range(self.nFloor))
         options.remove(starting_floor)
         return random.sample(options, 1)[0]
+    
+    def legal_actions(self, idx):
+        return self.elevators[idx].legal_actions()
 
     def render(self):
+        '''
+        Prints some stone age visualization in stdout...
+        '''
         DIR_MAP = {self.elevators[0].IDLE: '-', self.elevators[0].MOVING_UP: '^', self.elevators[0].MOVING_DOWN:'v'}
 
         for floor in range(self.nFloor-1, -1, -1):

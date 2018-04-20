@@ -1,4 +1,5 @@
 from env import make
+import random
 import time
 
 
@@ -16,18 +17,19 @@ def timed_function(func):
 
 
 if __name__=="__main__":
-    env = make(1, 10, [1/60]*10, 135, 1200, 5, 1)
+    env = make(1, 10, [1/180]*10, 135, 1200, 5, 1)
     s = env.reset()
 
-    action = 4 # switches between 4, and 6, corresponding to idle_up_idle and idle_down_idle
+    action = 3 # switches between 4, and 6, corresponding to idle_up_idle and idle_down_idle
     while True:
-        print("Taking action {}".format(action))
+        action = random.sample(env.legal_actions(0), 1)[0]# 0 calls for the legal actions of the first elevator
+        print("Taking action {}:{}".format(action, env.elevators[0].ACTION_FUNCTION_MAP[action].__name__))
         s = timed_function(env.step)(action)
 
         env.render()
-        if s[-1][0] in [0, 9]:
-            if action == 4:
-                action = 6
-            else:
-                action = 4
+        #if s['elevator_positions'][0] in [0, 9]:
+        #    if action == 3:
+        #        action = 5
+        #    else:
+        #        action = 3
         time.sleep(0.5)
