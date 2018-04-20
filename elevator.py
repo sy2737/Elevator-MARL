@@ -78,7 +78,7 @@ class Elevator():
             yield self.env.simenv.event()
         else:
             yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
-            self.env.trigger_epoch_event("ElevatorArrival_{}".fomrat(self.id))
+            self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
     
     def _move_move(self):
         '''should probably generate an ElevatorArrival event?'''

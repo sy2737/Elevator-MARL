@@ -1,4 +1,5 @@
 import simpy
+import time
 from simpy.events import AnyOf
 import random 
 from math import log as Log
@@ -45,6 +46,7 @@ class Environment():
         self.epoch_events = None
         self.psngr_by_fl= {floor:set() for floor in range(nFloor)}
         self.decision_elevator = None
+        self._elevator_candidate = 0
         
         pass
 
@@ -58,12 +60,11 @@ class Environment():
           is done, you immediately let the elevator move toward the direction that
           it decided early on. 
         '''
-        #TODO: sinlge->multi
-        #self.elevators[self.decision_elevator].act(action)
         # This schedules an event for the next ElevatorArrival event for that elevator
         
 
-        self.simenv.process(self.elevators[self.decision_elevator].act(action))
+        if action!=-1:
+            self.simenv.process(self.elevators[self.decision_elevator].act(action))
 
         while True:
             event_type = self.simenv.run(until=AnyOf(self.simenv, self.epoch_events.values())).events[0].value
@@ -82,6 +83,8 @@ class Environment():
 
         # TODO: elevator should handle what kind of env state representation it wants to return
         #       It should only return state values in formats that it sees
+        if action==-1:
+            assert(event_type=="PassengerArrival")
         print("Decision epoch triggered at time {}, by event type: {}".format(
             self.simenv.now, event_type)
         )
@@ -92,16 +95,32 @@ class Environment():
         self.decision_elevator = int(event_type.split('_')[-1])
         return True
 
-    def _process_passenger_arrival(self):
+    def _process_passenger_arrival_helper(self):
         # Decision epoch if there is an elevator waiting, otherwise
         # simply update the hallway calls
         # TODO: If there are multiple elevators IDLING, they need to go into decision at the same time
+        #       and without asymmetry (the order inwhich they made decision shouldn't change the
+        #       states that they observe)
         self._update_hall_calls()
-        for e, idx in enumerate(self.elevators):
+        for idx in range(self._elevator_candidate, self.nElevator):
+            e = self.elevators[idx]
+            self._elevator_candidate += 1
             if e.state == self.elevators[0].IDLE:
                 self.decision_elevator = idx
                 return True
         return False
+
+    def _process_passenger_arrival(self):
+        # Decision epoch if there is an elevator waiting
+        # If there are at least two, then allow both of them to make a decision
+        output = False
+        if self._process_passenger_arrival_helper():
+            output = True
+        if self._elevator_candidate < self.nElevator:
+            self.trigger_epoch_event("PassengerArrival")
+        else:
+            self._elevator_candidate = 0
+        return output
 
 
     def generate_loading_event(self, elevator):
@@ -136,7 +155,8 @@ class Environment():
             "hall_calls_up": self.hall_calls_up,
             "hall_calls_down": self.hall_calls_down,
             "elevator_positions": elevator_positions,
-            "elevator_states": elevator_states
+            "elevator_states": elevator_states,
+            "decision_elevator": self.decision_elevator,
         }
 
     def reset(self):
@@ -152,12 +172,12 @@ class Environment():
             "PassengerArrival": self.simenv.event(),
         }
         for idx in range(self.nElevator):
-            self.epoch_events["ElevatorArrival_{}".format(idx)] = self.self.simenv_event()
+            self.epoch_events["ElevatorArrival_{}".format(idx)] = self.simenv.event()
 
         self.hall_calls_up = [0]*self.nFloor
         self.hall_calls_down = [0]*self.nFloor
 
-        return self.get_states()
+        return self.step(-1)
 
     def _update_hall_calls(self):
         self.hall_calls_up = [0]*self.nFloor
@@ -181,7 +201,9 @@ class Environment():
         while True:
             # Keeps generating new passengers
             yield self.simenv.timeout(random.expovariate(sum(self.spawnRates)))
+            time.sleep(0.5)
             print("generating new passenger! at time {}".format(self.simenv.now))
+            print("Current elevators status:", [e.state for e in self.elevators], "_elevator_candidate:", self._elevator_candidate)
             floor = random.choices(range(self.nFloor), self.spawnRates)[0]
             # Weight is normally distributed 
             self.psngr_by_fl[floor].add(Passenger(random.normalvariate(self.avgWeight, 10), floor, self._destination(floor)))

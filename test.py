@@ -1,4 +1,5 @@
 from env import make
+from elevator import Elevator
 import random
 import time
 
@@ -17,12 +18,11 @@ def timed_function(func):
 
 
 if __name__=="__main__":
-    env = make(1, 10, [1/180]*10, 135, 1200, 5, 1)
+    env = make(2, 10, [1/180]*10, 135, 1200, 5, 1)
     s = env.reset()
-
-    action = 3 # switches between 4, and 6, corresponding to idle_up_idle and idle_down_idle
     while True:
-        action = random.sample(env.legal_actions(0), 1)[0]# 0 calls for the legal actions of the first elevator
+        decision_agent = s["decision_elevator"]
+        action = random.sample(env.legal_actions(decision_agent), 1)[0]# 0 calls for the legal actions of the first elevator
         print("Taking action {}:{}".format(action, env.elevators[0].ACTION_FUNCTION_MAP[action].__name__))
         s = timed_function(env.step)(action)
 
