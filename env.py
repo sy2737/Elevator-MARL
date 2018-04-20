@@ -44,8 +44,7 @@ class Environment():
         self.elevators = None
         self.epoch_events = None
         self.psngr_by_fl= {floor:set() for floor in range(nFloor)}
-        #TODO: sinlge->multi
-        #self.decision_elevator = None
+        self.decision_elevator = None
         
         pass
 
@@ -62,9 +61,9 @@ class Environment():
         #TODO: sinlge->multi
         #self.elevators[self.decision_elevator].act(action)
         # This schedules an event for the next ElevatorArrival event for that elevator
-        print("Active Processes:")
-        print(self.simenv.active_process)
-        self.simenv.process(self.elevators[0].act(action))
+        
+
+        self.simenv.process(self.elevators[self.decision_elevator].act(action))
 
         while True:
             event_type = self.simenv.run(until=AnyOf(self.simenv, self.epoch_events.values())).events[0].value
@@ -72,8 +71,8 @@ class Environment():
             # We calculate total weighting time etc, and assign loading events
             # If the event_type qualifies as a decision epoch then break 
             # out of the while loop and return the appropriate state 
-            if event_type == "ElevatorArrival":
-                decision = self._process_elevator_arrival()
+            if "ElevatorArrival" in event_type:
+                decision = self._process_elevator_arrival(event_type)
             elif event_type == "PassengerArrival":
                 decision = self._process_passenger_arrival()
             else:
@@ -88,17 +87,20 @@ class Environment():
         )
         return self.get_states()
     
-    def _process_elevator_arrival(self, idx=0):
+    def _process_elevator_arrival(self, event_type):
         # Every elevator arrival is an decision epoch
+        self.decision_elevator = int(event_type.split('_')[-1])
         return True
 
     def _process_passenger_arrival(self):
         # Decision epoch if there is an elevator waiting, otherwise
         # simply update the hallway calls
+        # TODO: If there are multiple elevators IDLING, they need to go into decision at the same time
         self._update_hall_calls()
-        # TODO, single->multi
-        if self.elevators[0].state == self.elevators[0].IDLE:
-            return True
+        for e, idx in enumerate(self.elevators):
+            if e.state == self.elevators[0].IDLE:
+                self.decision_elevator = idx
+                return True
         return False
 
 
@@ -144,12 +146,14 @@ class Environment():
           - decision_epoch events
         '''
         self.simenv.process(self.passenger_generator())
-        self.elevators = [Elevator(self, 0, self.weightLimit) for _ in range(self.nElevator)]
+        self.elevators = [Elevator(self, 0, self.weightLimit, id) for id in range(self.nElevator)]
         # TODO: will need to modify this part to differentiate different elevators
         self.epoch_events = {
             "PassengerArrival": self.simenv.event(),
-            "ElevatorArrival": self.simenv.event(),
         }
+        for idx in range(self.nElevator):
+            self.epoch_events["ElevatorArrival_{}".format(idx)] = self.self.simenv_event()
+
         self.hall_calls_up = [0]*self.nFloor
         self.hall_calls_down = [0]*self.nFloor
 

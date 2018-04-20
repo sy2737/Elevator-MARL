@@ -13,7 +13,7 @@ class Elevator():
     MOVE_IDLE = 5
     IDLE_IDLE = 8
 
-    def __init__(self, env, init_floor, weightLimit):
+    def __init__(self, env, init_floor, weightLimit, id):
         self.env = env
         self.floor = init_floor
         self.requested_fls = set()
@@ -21,6 +21,7 @@ class Elevator():
         self.carrying_weight = 0
         self.weight_limit = weightLimit
         self.state = self.IDLE
+        self.id = id
 
         self.ACTION_FUNCTION_MAP = {
             0: self._move_move,
@@ -77,7 +78,7 @@ class Elevator():
             yield self.env.simenv.event()
         else:
             yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
-            self.env.trigger_epoch_event("ElevatorArrival")
+            self.env.trigger_epoch_event("ElevatorArrival_{}".fomrat(self.id))
     
     def _move_move(self):
         '''should probably generate an ElevatorArrival event?'''
