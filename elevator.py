@@ -25,10 +25,11 @@ class Elevator():
         self.ACTION_FUNCTION_MAP = {
             0: self._move_move,
             1: self._move_idle,
-            3: self._idle_up_move,
-            4: self._idle_up_idle,
-            5: self._idle_down_move,
-            6: self._idle_down_idle,
+            2: self._idle_up_move,
+            3: self._idle_up_idle,
+            4: self._idle_down_move,
+            5: self._idle_down_idle,
+            6: self._idle_idle,
         }
 
     def request(self, floor):
@@ -63,13 +64,20 @@ class Elevator():
         (0)     Move Move
         (1)     Move Idle
         ( ) IDLE:
-        (2)     UP stop
-        (3)     UP move
-        (4)     DOWN stop
-        (5)     DOWN move
+        (2)     UP move 
+        (3)     UP stop
+        (4)     DOWN move 
+        (5)     DOWN stop 
+        (6)     Stay Idle
         '''
-        yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
-        self.env.trigger_epoch_event("ElevatorArrival")
+        if action==6:
+            # Staying IDLE is special because no schedule of next decision epoch is set
+            # TODO: maybe add a handle to this event somewhere in env... so it's not lost
+            self.ACTION_FUNCTION_MAP[action]()
+            yield self.env.simenv.event()
+        else:
+            yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
+            self.env.trigger_epoch_event("ElevatorArrival")
     
     def _move_move(self):
         '''should probably generate an ElevatorArrival event?'''
@@ -110,9 +118,44 @@ class Elevator():
         yield self.env.simenv.timeout(self.IDLE_IDLE)
         self._update_floor()
         self.state = self.IDLE
+
+    def _idle_idle(self):
+        assert self.state==self.IDLE
     
     def _update_floor(self):
         self.floor += self.state
         for p in self.carrying:
             p.update_floor(self.floor)
+
+
+    def legal_actions(self):
+        legal = set()
+        if self.state == self.IDLE:
+            legal.update([2, 3, 4, 5, 6]) 
+            # If almost at the top, you have to stop at the next floor up
+            if self.floor == self.env.nFloor-2:
+                legal.remove(2)
+            # If at the top, you can't move up
+            if self.floor == self.env.nFloor-1:
+                legal.remove(2)
+                legal.remove(3)
+
+            # If almost at the bottom, you have to stop at the next floow below
+            if self.floor == 1:
+                legal.remove(4)
+            # If at the bottom, you can't move down
+            if self.floor == 0:
+                legal.remove(4)
+                legal.remove(5)
+            return legal
+
+        else:
+            legal.update([0,1])
+            if self.floor == self.env.nFloor-2 and self.state==self.MOVING_UP:
+                legal.remove(0)
+            if self.floor == 1 and self.state==self.MOVING_DOWN:
+                legal.remove(0)
+            return legal
+
+                
 
