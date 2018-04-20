@@ -23,7 +23,7 @@ if __name__=="__main__":
     while True:
         decision_agent = s["decision_elevator"]
         action = random.sample(env.legal_actions(decision_agent), 1)[0]# 0 calls for the legal actions of the first elevator
-        print("Taking action {}:{}".format(action, env.elevators[0].ACTION_FUNCTION_MAP[action].__name__))
+        print("Agent {} Taking action {}:{}".format(decision_agent, action, env.elevators[0].ACTION_FUNCTION_MAP[action].__name__))
         s = timed_function(env.step)(action)
 
         env.render()

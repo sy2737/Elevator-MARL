@@ -137,7 +137,6 @@ class Environment():
                     num_loaded += 1
             
         self._update_hall_calls()
-        print("Starting to load {} passengers on floor {}".format(num_loaded, elevator.floor))
         return self.simenv.timeout(2+max(0,random.normalvariate(Log(1+num_loaded)*self.loadTime, 1)))
 
 
@@ -201,9 +200,7 @@ class Environment():
         while True:
             # Keeps generating new passengers
             yield self.simenv.timeout(random.expovariate(sum(self.spawnRates)))
-            time.sleep(0.5)
             print("generating new passenger! at time {}".format(self.simenv.now))
-            print("Current elevators status:", [e.state for e in self.elevators], "_elevator_candidate:", self._elevator_candidate)
             floor = random.choices(range(self.nFloor), self.spawnRates)[0]
             # Weight is normally distributed 
             self.psngr_by_fl[floor].add(Passenger(random.normalvariate(self.avgWeight, 10), floor, self._destination(floor)))
