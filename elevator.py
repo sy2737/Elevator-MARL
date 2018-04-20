@@ -3,14 +3,6 @@ import random
 
 class Elevator():
     # Action functions that elevators have
-    ACTION_FUNCTION_MAP = {
-        0: self._move_move,
-        1: self._move_idle,
-        3: self._idle_up_move,
-        4: self._idle_up_idle,
-        5: self._idle_down_move,
-        6: self._idle_down_idle,
-    }
     # States of the elevator
     IDLE = 0
     MOVING_UP = 1
@@ -29,6 +21,15 @@ class Elevator():
         self.carrying_weight = 0
         self.weight_limit = weightLimit
         self.state = self.IDLE
+
+        self.ACTION_FUNCTION_MAP = {
+            0: self._move_move,
+            1: self._move_idle,
+            3: self._idle_up_move,
+            4: self._idle_up_idle,
+            5: self._idle_down_move,
+            6: self._idle_down_idle,
+        }
 
     def request(self, floor):
         '''To be called by a passenger'''
@@ -66,7 +67,7 @@ class Elevator():
         (4)     DOWN stop
         (5)     DOWN move
         '''
-        self.ACTION_FUNCTION_MAP[action]()
+        yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
         self.env.trigger_epoch_event("ElevatorArrival")
     
     def _move_move(self):

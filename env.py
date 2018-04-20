@@ -1,9 +1,9 @@
 import simpy
 from simpy.events import AnyOf
 import random 
-from numpy import Sign
+from numpy import sign as Sign
 from passenger import Passenger
-    from elevator import Elevator
+from elevator import Elevator
 
 def make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, moveSpeed):
 
@@ -31,7 +31,7 @@ class Environment():
     '''
     def __init__(self, simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, moveSpeed):
         self.simenv = simenv
-        self.nElevaotr = nElevator
+        self.nElevator = nElevator
         self.nFloor = nFloor
         self.spawnRates = spawnRates
         self.avgWeight = avgWeight
@@ -65,7 +65,7 @@ class Environment():
         self.simenv.process(self.elevators[0].act(action))
 
         while True:
-            event_type = self.simenv.run(until=AnyOf(self.epoch_events.values()))
+            event_type = self.simenv.run(until=AnyOf(self.simenv, self.epoch_events.values())).events[0].value
             # Here is where we process the events
             # We calculate total weighting time etc, and assign loading events
             # If the event_type qualifies as a decision epoch then break 
@@ -93,7 +93,11 @@ class Environment():
     def _process_passenger_arrival(self):
         # Decision epoch if there is an elevator waiting, otherwise
         # simply update the hallway calls
-        raise NotImplementedError
+        self._update_hall_calls()
+        # TODO, single->multi
+        if self.elevators[0].state == self.elevators[0].IDLE:
+            return True
+        return False
 
 
     def generate_loading_event(self, elevator):
@@ -107,7 +111,8 @@ class Environment():
                     self.psngr_by_fl.remove(p)
                     num_loaded += 1
             
-        yield self.simenv.timeout(2+random.normalvariate(self.num_loaded*self.loadTime, 1))
+        self._update_hall_calls()
+        return self.simenv.timeout(2+random.normalvariate(num_loaded*self.loadTime, 1))
 
 
     def get_states(self):
@@ -117,7 +122,8 @@ class Environment():
              each floor
         '''
         nPsngrs_by_fl = [len(self.psngr_by_fl[i]) for i in range(self.nFloor)]
-        return [nPsngrs_by_fl, self.hall_calls_up, self.hall_calls_down]
+        elevator_positions = [e.floor for e in self.elevators]
+        return [nPsngrs_by_fl, self.hall_calls_up, self.hall_calls_down, elevator_positions]
 
     def reset(self):
         '''
@@ -126,31 +132,38 @@ class Environment():
           - decision_epoch events
         '''
         self.simenv.process(self.passenger_generator())
-        self.elevators = [Elevator(1) for _ in range(self.nElevator)]
+        self.elevators = [Elevator(self, 0, self.weightLimit) for _ in range(self.nElevator)]
         # TODO: will need to modify this part to differentiate different elevators
         self.epoch_events = {
-            "PassengerArrival": self.simenv.event("PassengerArrival"),
-            "ElevatorArrival": self.simenv.event("ElevatorArrival"),
+            "PassengerArrival": self.simenv.event(),
+            "ElevatorArrival": self.simenv.event(),
         }
-        self.hall_calls_up = [0]*nFloor
-        self.hall_calls_down = [0]*nFloor
+        self.hall_calls_up = [0]*self.nFloor
+        self.hall_calls_down = [0]*self.nFloor
 
         return self.get_states()
 
+    def _update_hall_calls(self):
+        pass
+
     def trigger_epoch_event(self, event_type):
-        self.epoch_events[event_type].succeed()
-        self.epoch_events[event_type] = self.simenv.event(event_type)
+        self.epoch_events[event_type].succeed(event_type)
+        self.epoch_events[event_type] = self.simenv.event()
 
     def passenger_generator(self):
         while True:
             # Keeps generating new passengers
             yield self.simenv.timeout(random.expovariate(sum(self.spawnRates)))
-            print("generating new passenger!")
+            print("generating new passenger! at time {}".format(self.simenv.now))
             floor = random.choices(range(self.nFloor), self.spawnRates)[0]
             # Weight is normally distributed 
-            self.psngr_by_fl[floor].add(Passenger(random.normalvariate(self.avgWeight, 10), floor))
+            self.psngr_by_fl[floor].add(Passenger(random.normalvariate(self.avgWeight, 10), floor, self._destination(floor)))
             if len(self.psngr_by_fl[floor])>=1:
                 self.trigger_epoch_event("PassengerArrival")
 
 
+    def _destination(self, starting_floor):
+        options = set(range(self.nFloor))
+        options.remove(starting_floor)
+        return random.sample(options, 1)[0]
 
