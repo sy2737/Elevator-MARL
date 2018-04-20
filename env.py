@@ -117,7 +117,7 @@ class Environment():
             
         self._update_hall_calls()
         print("Starting to load {} passengers on floor {}".format(num_loaded, elevator.floor))
-        return self.simenv.timeout(2+random.normalvariate(Log(1+num_loaded)*self.loadTime, 1))
+        return self.simenv.timeout(2+max(0,random.normalvariate(Log(1+num_loaded)*self.loadTime, 1)))
 
 
     def get_states(self):
