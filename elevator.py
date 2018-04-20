@@ -1,28 +1,38 @@
+import simpy
+import random
+
 class Elevator():
+    # Action functions that elevators have
     ACTION_FUNCTION_MAP = {
-        0: self._move_up_move,
-        1: self._move_up_idle,
-        2: self._move_down_move,
-        3: self._move_down_idle,
-        4: self._idle_up_move,
-        5: self._idle_up_idle,
-        6: self._idle_down_move,
-        7: self._idle_down_idle,
+        0: self._move_move,
+        1: self._move_idle,
+        3: self._idle_up_move,
+        4: self._idle_up_idle,
+        5: self._idle_down_move,
+        6: self._idle_down_idle,
     }
+    # States of the elevator
     IDLE = 0
     MOVING_UP = 1
-    MOVING_DOWN = 2
-    def __init__(self, init_floor, weightLimit):
+    MOVING_DOWN = -1
+
+    # Time it takes for elevators to move
+    MOVE_MOVE = 3
+    MOVE_IDLE = 5
+    IDLE_IDLE = 8
+
+    def __init__(self, env, init_floor, weightLimit):
+        self.env = env
         self.floor = init_floor
-        self.requested_fls = []
-        self.carrying = []
+        self.requested_fls = set()
+        self.carrying = set()
         self.carrying_weight = 0
         self.weight_limit = weightLimit
         self.state = self.IDLE
 
     def request(self, floor):
         '''To be called by a passenger'''
-        self.requested_fls.append(floor)
+        self.requested_fls.add(floor)
 
     def enter(self, passenger):
         '''
@@ -34,42 +44,73 @@ class Elevator():
         '''
         if passenger.weight + self.carrying_weight <= self.weight_limit:
             return False
-        self.carrying.append(passenger)
+        self.carrying.add(passenger)
         self.carrying_weight += passenger.weight
         return True
     
+    def leave(self, passenger):
+        self.carrying.remove(passenger)
+        self.carrying_weight = sum([p.weight for p in self.carrying])
+        return True
+
+    
     def act(self, action):
         '''
-        Seven different actions, valid at different states
-        ( ) MOVING UP:
-        (0)     UP move
-        (1)     UP stop
-        ( ) MOVING DOWN:
-        (2)     DOWN move
-        (3)     DOWN stop
+        Six different actions, valid at different states
+        ( ) MOVING:
+        (0)     Move Move
+        (1)     Move Idle
         ( ) IDLE:
-        (4)     UP stop
-        (5)     UP move
-        (6)     DOWN stop
-        (7)     DOWN move
+        (2)     UP stop
+        (3)     UP move
+        (4)     DOWN stop
+        (5)     DOWN move
         '''
         self.ACTION_FUNCTION_MAP[action]()
+        self.env.trigger_epoch_event("ElevatorArrival")
     
-    def _move_up_move(self):
+    def _move_move(self):
         '''should probably generate an ElevatorArrival event?'''
-        pass
-    def _move_up_idle(self):
-        pass
-    def _move_down_move(self):
-        pass
-    def _move_down_idle(self):
-        pass
+        # State unchanged, and next event_epoch is some time in the future
+        yield self.env.simenv.timeout(self.MOVE_MOVE)
+        self._update_floor()
+
+    def _move_idle(self):
+        yield self.env.simenv.timeout(self.MOVE_IDLE)
+        self._update_floor()
+        self.state = self.IDLE
+
     def _idle_up_move(self):
-        pass
+        # Specify the intended direction first
+        self.state = self.MOVING_UP
+        # Load the passengers
+        yield self.env.generate_loading_event(self)
+        # Move
+        yield self.env.simenv.timeout(self.MOVE_IDLE)
+        self._update_floor()
+
     def _idle_up_idle(self):
-        pass
+        self.state = self.MOVING_UP
+        yield self.env.generate_loading_event(self)
+        yield self.env.simenv.timeout(self.IDLE_IDLE)
+        self._update_floor()
+        self.state = self.IDLE
+
     def _idle_down_move(self):
-        pass
+        self.state = self.MOVING_DOWN
+        yield self.env.generate_loading_event(self)
+        yield self.env.simenv.timeout(self.MOVE_IDLE)
+        self._update_floor()
+
     def _idle_down_idle(self):
-        pass
+        self.state = self.MOVING_DOWN
+        yield self.env.generate_loading_event(self)
+        yield self.env.simenv.timeout(self.IDLE_IDLE)
+        self._update_floor()
+        self.state = self.IDLE
+    
+    def _update_floor(self):
+        self.floor += self.state
+        for p in self.carrying:
+            self.p.update_floor(self.floor)
 
