@@ -32,6 +32,7 @@ class Elevator():
             5: self._idle_down_idle,
             6: self._idle_idle,
         }
+        self.env.simenv.process(self.act(6))
 
     def request(self, floor):
         '''To be called by a passenger'''
@@ -57,6 +58,9 @@ class Elevator():
         self.carrying_weight = sum([p.weight for p in self.carrying])
         return True
 
+    def interrupt_idling(self):
+        self.idling_event.interrupt()
+
     
     def act(self, action):
         '''
@@ -71,14 +75,16 @@ class Elevator():
         (5)     DOWN stop 
         (6)     Stay Idle
         '''
+        # Staying IDLE is special because it may be interrupted.
         if action==6:
-            # Staying IDLE is special because no schedule of next decision epoch is set
-            # TODO: maybe add a handle to this event somewhere in env... so it's not lost
-            self.ACTION_FUNCTION_MAP[action]()
-            yield self.env.simenv.event()
+            self.idling_event = self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
+            try:
+                yield self.idling_event
+            except simpy.Interrupt:
+                pass # Interrupted, so decision epoch came early...
         else:
             yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
-            self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
+        self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
     
     def _move_move(self):
         '''should probably generate an ElevatorArrival event?'''
@@ -122,6 +128,8 @@ class Elevator():
 
     def _idle_idle(self):
         assert self.state==self.IDLE
+        # Stay idle for at most sometime, and then decide if it wants to stay idle again
+        yield self.env.simenv.timeout(random.normalvariate(self.IDLE_IDLE, 0.01))
     
     def _update_floor(self):
         self.floor += self.state

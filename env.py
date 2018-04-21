@@ -62,7 +62,6 @@ class Environment():
         '''
         # This schedules an event for the next ElevatorArrival event for that elevator
         
-
         if action!=-1:
             self.simenv.process(self.elevators[self.decision_elevator].act(action))
 
@@ -83,8 +82,6 @@ class Environment():
 
         # TODO: elevator should handle what kind of env state representation it wants to return
         #       It should only return state values in formats that it sees
-        if action==-1:
-            assert(event_type=="PassengerArrival")
         print("Decision epoch triggered at time {}, by event type: {}".format(
             self.simenv.now, event_type)
         )
@@ -106,21 +103,19 @@ class Environment():
             e = self.elevators[idx]
             self._elevator_candidate += 1
             if e.state == self.elevators[0].IDLE:
-                self.decision_elevator = idx
-                return True
+                #e.interrupt_idling()
+                pass
         return False
 
     def _process_passenger_arrival(self):
         # Decision epoch if there is an elevator waiting
         # If there are at least two, then allow both of them to make a decision
-        output = False
-        if self._process_passenger_arrival_helper():
-            output = True
+        self._process_passenger_arrival_helper()
         if self._elevator_candidate < self.nElevator:
             self.trigger_epoch_event("PassengerArrival")
         else:
             self._elevator_candidate = 0
-        return output
+        return False
 
 
     def generate_loading_event(self, elevator):
@@ -172,6 +167,8 @@ class Environment():
         }
         for idx in range(self.nElevator):
             self.epoch_events["ElevatorArrival_{}".format(idx)] = self.simenv.event()
+        #for idx in range(self.nElevator):
+        #    self.epoch_events["ElevatorIdling_{}".format(idx)] = self.simenv.event()
 
         self.hall_calls_up = [0]*self.nFloor
         self.hall_calls_down = [0]*self.nFloor
