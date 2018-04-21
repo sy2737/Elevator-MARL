@@ -4,10 +4,11 @@ from simpy.events import AnyOf
 import random 
 from math import log as Log
 from numpy import sign as Sign
-from passenger import Passenger
-from elevator import Elevator
+from .passenger import Passenger
+from .elevator import Elevator
+from .logger import get_my_logger
 
-def make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, moveSpeed):
+def make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime):
 
     '''
     nElevator:     Number of elevators
@@ -24,7 +25,7 @@ def make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, moveSp
     simenv = simpy.Environment()
 
     # Returns an Environment instance
-    return Environment(simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, moveSpeed)
+    return Environment(simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
 
     
 class Environment():
@@ -32,7 +33,7 @@ class Environment():
     controls the simulation, allows outside controllers (policies)
     to act at decision epochs (certain specific types of events)
     '''
-    def __init__(self, simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, moveSpeed):
+    def __init__(self, simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime):
         self.simenv = simenv
         self.nElevator = nElevator
         self.nFloor = nFloor
@@ -40,17 +41,17 @@ class Environment():
         self.avgWeight = avgWeight
         self.weightLimit = weightLimit
         self.loadTime = loadTime
-        self.moveSpeed = moveSpeed
 
         self.elevators = None
         self.epoch_events = None
         self.psngr_by_fl= {floor:set() for floor in range(nFloor)}
-        self.decision_elevator = None
+        self.decision_elevators = []
         self._elevator_candidate = 0
+        self.logger = get_my_logger(self.__class__.__name__)
         
         pass
 
-    def step(self, action):
+    def step(self, actions):
         '''Steps through the simulation until the next decision epoch is reached
            at which point the function prepares the state representation and 
            returns it
@@ -62,49 +63,57 @@ class Environment():
         '''
         # This schedules an event for the next ElevatorArrival event for that elevator
         
-        if action!=-1:
-            self.simenv.process(self.elevators[self.decision_elevator].act(action))
+        for idx, a in enumerate(actions):
+            if a == -1:
+                continue
+            self.simenv.process(self.elevators[self.decision_elevators[idx]].act(a))
 
         while True:
-            event_type = self.simenv.run(until=AnyOf(self.simenv, self.epoch_events.values())).events[0].value
-            # Here is where we process the events
+            self.decision_elevators = []
+            finished_events = self.simenv.run(until=AnyOf(self.simenv, self.epoch_events.values())).events
+            # There can be multiple events finished (when passenger arrives and multiple elevators go into decision mode)
+
+            # TODO: Here is where we process the events
             # We calculate total weighting time etc, and assign loading events
             # If the event_type qualifies as a decision epoch then break 
             # out of the while loop and return the appropriate state 
-            if "ElevatorArrival" in event_type:
-                decision = self._process_elevator_arrival(event_type)
-            elif event_type == "PassengerArrival":
-                decision = self._process_passenger_arrival()
-            else:
-                raise ValueError("Unimplemented event type: {}".format(event_type))
+            if len(finished_events)>1:
+                for e in finished_events:
+                    assert("ElevatorArrival" in e.value)
+            for event in finished_events:
+                event_type = event.value
+                if "ElevatorArrival" in event_type:
+                    decision = self._process_elevator_arrival(event_type)
+                elif event_type == "PassengerArrival":
+                    decision = self._process_passenger_arrival()
+                else:
+                    raise ValueError("Unimplemented event type: {}".format(event_type))
             if decision:
                 break
 
         # TODO: elevator should handle what kind of env state representation it wants to return
         #       It should only return state values in formats that it sees
-        print("Decision epoch triggered at time {}, by event type: {}".format(
-            self.simenv.now, event_type)
+        self.logger.info("Decision epoch triggered at time {:8.3f}, by event type: {}".format(
+            self.simenv.now, [event.value for event in finished_events])
         )
         return self.get_states()
     
     def _process_elevator_arrival(self, event_type):
         # Every elevator arrival is an decision epoch
-        self.decision_elevator = int(event_type.split('_')[-1])
+        self.decision_elevators.append(int(event_type.split('_')[-1]))
         return True
 
     def _process_passenger_arrival_helper(self):
         # Decision epoch if there is an elevator waiting, otherwise
-        # simply update the hallway calls
-        # TODO: If there are multiple elevators IDLING, they need to go into decision at the same time
-        #       and without asymmetry (the order inwhich they made decision shouldn't change the
-        #       states that they observe)
+        # simply update the hallway calls.
+        # 
         self._update_hall_calls()
         for idx in range(self._elevator_candidate, self.nElevator):
             e = self.elevators[idx]
             self._elevator_candidate += 1
             if e.state == self.elevators[0].IDLE:
-                #e.interrupt_idling()
-                pass
+                self.logger.debug("INTERRUPTING ELEVATOR {}, at time {}".format(e.id, self.simenv.now))
+                e.interrupt_idling()
         return False
 
     def _process_passenger_arrival(self):
@@ -150,7 +159,7 @@ class Environment():
             "hall_calls_down": self.hall_calls_down,
             "elevator_positions": elevator_positions,
             "elevator_states": elevator_states,
-            "decision_elevator": self.decision_elevator,
+            "decision_elevators": self.decision_elevators,
         }
 
     def reset(self):
@@ -173,7 +182,7 @@ class Environment():
         self.hall_calls_up = [0]*self.nFloor
         self.hall_calls_down = [0]*self.nFloor
 
-        return self.step(-1)
+        return self.step([-1])
 
     def _update_hall_calls(self):
         self.hall_calls_up = [0]*self.nFloor
@@ -197,7 +206,7 @@ class Environment():
         while True:
             # Keeps generating new passengers
             yield self.simenv.timeout(random.expovariate(sum(self.spawnRates)))
-            print("generating new passenger! at time {}".format(self.simenv.now))
+            self.logger.debug("generating new passenger! at time {}".format(self.simenv.now))
             floor = random.choices(range(self.nFloor), self.spawnRates)[0]
             # Weight is normally distributed 
             self.psngr_by_fl[floor].add(Passenger(random.normalvariate(self.avgWeight, 10), floor, self._destination(floor)))

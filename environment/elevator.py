@@ -1,5 +1,6 @@
 import simpy
 import random
+from .logger import get_my_logger
 
 class Elevator():
     # Action functions that elevators have
@@ -22,6 +23,7 @@ class Elevator():
         self.weight_limit = weightLimit
         self.state = self.IDLE
         self.id = id
+        self.logger = get_my_logger("Elevator_{}".format(self.id))
 
         self.ACTION_FUNCTION_MAP = {
             0: self._move_move,
@@ -79,15 +81,17 @@ class Elevator():
         if action==6:
             self.idling_event = self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
             try:
+                self.logger.debug("Elevator {} is about to idle!".format(self.id))
                 yield self.idling_event
             except simpy.Interrupt:
+                self.logger.debug("Elevator {} is interrupted!".format(self.id))
                 pass # Interrupted, so decision epoch came early...
         else:
             yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
+        self.logger.debug("Triggering Elevator {} arrival!! at time: {}".format(self.id, self.env.simenv.now))
         self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
     
     def _move_move(self):
-        '''should probably generate an ElevatorArrival event?'''
         # State unchanged, and next event_epoch is some time in the future
         yield self.env.simenv.timeout(self.MOVE_MOVE)
         self._update_floor()
