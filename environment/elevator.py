@@ -1,5 +1,6 @@
 import simpy
 import random
+import numpy as np
 from .logger import get_my_logger
 
 class Elevator():
@@ -23,6 +24,8 @@ class Elevator():
         self.weight_limit = weightLimit
         self.state = self.IDLE
         self.id = id
+        self.current_loss = 0
+        self.last_decision_epoch = self.env.simenv.now
         self.logger = get_my_logger("Elevator_{}".format(self.id))
 
         self.ACTION_FUNCTION_MAP = {
@@ -140,7 +143,6 @@ class Elevator():
         for p in self.carrying:
             p.update_floor(self.floor)
 
-
     def legal_actions(self):
         legal = set()
         if self.state == self.IDLE:
@@ -170,5 +172,51 @@ class Elevator():
                 legal.remove(0)
             return legal
 
-                
+    def update_loss(self, loss):
+        # Update the loss inccurred since the last decision epoch 
+        self.current_loss += loss
+        return True
+    def get_loss(self, decision_epoch):
+        output = self.current_loss
+        if decision_epoch:
+            self.current_loss = 0
+        return output
+
+    def _one_hot_encode(self, x, values):
+        values = np.array(values)
+        return values==x
+    def get_states(self, decision_epoch):
+        '''generate state with respect to the elevator's perspective'''
+        
+        elevator_positions = [self.floor] + [e.floor for e in self.env.elevators if e is not self]
+
+        onehot_elevator_positions = np.concatenate([
+            self._one_hot_encode(fl, range(self.env.nFloor)) for fl in elevator_positions
+        ])
+    
+        elevator_states = [self.state] + [e.state for e in self.env.elevators if e is not self]
+        
+        onehot_elevator_states = np.concatenate([
+            self._one_hot_encode(
+                state, [self.IDLE, self.MOVING_UP, self.MOVING_DOWN]
+            ) for state in elevator_states
+        ])
+
+        hall_call_up_times = (self.env.simenv.now - self.env.hall_calls_up_pressed_at)*self.env.hall_calls_up
+        hall_call_down_times = (self.env.simenv.now - self.env.hall_calls_down_pressed_at)*self.env.hall_calls_down
+
+        time_elapsed = [self.env.simenv.now-self.last_decision_epoch]
+
+        state_representation = np.concatenate([
+            self.env.hall_calls_up,
+            self.env.hall_calls_down,
+            hall_call_up_times,
+            hall_call_down_times,
+            onehot_elevator_positions,
+            onehot_elevator_states,
+            time_elapsed
+        ])
+        if decision_epoch:
+            self.last_decision_epoch = self.env.simenv.now
+        return state_representation
 

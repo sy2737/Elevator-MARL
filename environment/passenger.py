@@ -1,9 +1,11 @@
 class Passenger():
-    def __init__(self, weight, floor, destination):
+    def __init__(self, weight, floor, destination, time):
         self.weight = weight
         self.floor = floor
         self.destination = destination
         self.elevator = None
+        self.created_at = time
+
 
     def enter(self, elevator):
         '''
@@ -11,6 +13,7 @@ class Passenger():
         '''
         if elevator.enter(self):
             self.elevator = elevator
+            self.elevator.request(self.destination)
             return True
         return False
     

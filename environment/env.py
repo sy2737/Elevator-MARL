@@ -4,6 +4,8 @@ from simpy.events import AnyOf
 import random 
 from math import log as Log
 from numpy import sign as Sign
+from numpy import exp as Exp
+import numpy as np
 from .passenger import Passenger
 from .elevator import Elevator
 from .logger import get_my_logger
@@ -46,6 +48,9 @@ class Environment():
         self.epoch_events = None
         self.psngr_by_fl= {floor:set() for floor in range(nFloor)}
         self.decision_elevators = []
+
+        self.last_reward_time = 0
+        self.reward_discount = 0.01
         self._elevator_candidate = 0
         self.logger = get_my_logger(self.__class__.__name__)
         
@@ -71,6 +76,7 @@ class Environment():
         while True:
             self.decision_elevators = []
             finished_events = self.simenv.run(until=AnyOf(self.simenv, self.epoch_events.values())).events
+            self.update_all_loss()
             # There can be multiple events finished (when passenger arrives and multiple elevators go into decision mode)
 
             # TODO: Here is where we process the events
@@ -96,7 +102,12 @@ class Environment():
         self.logger.info("Decision epoch triggered at time {:8.3f}, by event type: {}".format(
             self.simenv.now, [event.value for event in finished_events])
         )
-        return self.get_states()
+        output = {
+            "states": self.get_states(self.decision_elevators, True),
+            "rewards": self.get_rewards(self.decision_elevators, True),
+            "decision agents": self.decision_elevators
+        }
+        return output
     
     def _process_elevator_arrival(self, event_type):
         # Every elevator arrival is an decision epoch
@@ -117,7 +128,7 @@ class Environment():
         return False
 
     def _process_passenger_arrival(self):
-        # Decision epoch if there is an elevator waiting
+        # Interrupt the idling process of elevator if it is waiting
         # If there are at least two, then allow both of them to make a decision
         self._process_passenger_arrival_helper()
         if self._elevator_candidate < self.nElevator:
@@ -126,13 +137,15 @@ class Environment():
             self._elevator_candidate = 0
         return False
 
-
     def generate_loading_event(self, elevator):
         '''Elevator calls this function when it reaches a floor and is ready to load'''
         num_loaded = 0
         carrying = [p for p in elevator.carrying]
         for p in carrying:
             num_loaded += p.leave_if_arrived()
+        if num_loaded > 0:
+            assert(elevator.floor in elevator.requested_fls)
+            elevator.requested_fls.remove(elevator.floor)
 
         waiting = [p for p in self.psngr_by_fl[elevator.floor]]
         for p in waiting:
@@ -143,24 +156,36 @@ class Environment():
         self._update_hall_calls()
         return self.simenv.timeout(2+max(0,random.normalvariate(Log(1+num_loaded)*self.loadTime, 1)))
 
+    def now(self):
+        return self.simenv.now
 
-    def get_states(self):
+    def get_states(self, elevator_idxes, decision_epoch):
         '''
+        Input:
+            elevator_idxes: the indexes for elevators that we want the states for
+            decision_epoch: if this is a decision epoch for the elevators then True
+                            If set to True this will tell elevators to update their
+                            last deicions_epoch_time
+
         Prepares a state representation that is appropriate for the agents.
         i.e. elevators shouldn't be able to see how many passengers there are on 
              each floor
         '''
-        nPsngrs_by_fl = [len(self.psngr_by_fl[i]) for i in range(self.nFloor)]
-        elevator_positions = [e.floor for e in self.elevators]
-        elevator_states = [e.state for e in self.elevators]
-        return {
-            "num_psngrs_by_fl": nPsngrs_by_fl,
-            "hall_calls_up": self.hall_calls_up,
-            "hall_calls_down": self.hall_calls_down,
-            "elevator_positions": elevator_positions,
-            "elevator_states": elevator_states,
-            "decision_elevators": self.decision_elevators,
-        }
+        #elevator_positions = [e.floor for e in self.elevators]
+        #elevator_states = [e.state for e in self.elevators]
+
+        #return {
+        #    "hall_calls_up": self.hall_calls_up,
+        #    "hall_calls_down": self.hall_calls_down,
+        #    "elevator_positions": elevator_positions,
+        #    "elevator_states": elevator_states,
+        #    "decision_elevators": self.decision_elevators,
+        #}
+        return [self.elevators[idx].get_states(decision_epoch) for idx in elevator_idxes]
+    
+    def get_rewards(self, elevator_idxes, decision_epoch):
+        return [self.elevators[idx].get_loss(decision_epoch) for idx in elevator_idxes]
+
 
     def reset(self):
         '''
@@ -176,26 +201,36 @@ class Environment():
         }
         for idx in range(self.nElevator):
             self.epoch_events["ElevatorArrival_{}".format(idx)] = self.simenv.event()
-        #for idx in range(self.nElevator):
-        #    self.epoch_events["ElevatorIdling_{}".format(idx)] = self.simenv.event()
 
-        self.hall_calls_up = [0]*self.nFloor
-        self.hall_calls_down = [0]*self.nFloor
+        self.hall_calls_up = np.zeros(self.nFloor)
+        self.hall_calls_up_pressed_at = np.zeros(self.nFloor)
+        self.hall_calls_down = np.zeros(self.nFloor)
+        self.hall_calls_down_pressed_at = np.zeros(self.nFloor)
 
         return self.step([-1])
 
     def _update_hall_calls(self):
-        self.hall_calls_up = [0]*self.nFloor
-        self.hall_calls_down = [0]*self.nFloor
-
         for fl in range(self.nFloor):
+            up = False
+            down = False
             for p in self.psngr_by_fl[fl]:
                 if p.destination > fl:
-                    self.hall_calls_up[fl] = 1
+                    up = True
                 elif p.destination < fl:
-                    self.hall_calls_down[fl] = 1
+                    down = True
                 else:
                     raise ValueError("Passenger's floor is equal to the destination?")
+            if up and not self.hall_calls_up[fl]:
+                self.hall_calls_up[fl] = 1
+                self.hall_calls_up_pressed_at[fl] = self.simenv.now
+            if not up:
+                self.hall_calls_up[fl] = 0
+            if down and not self.hall_calls_down[fl]:
+                self.hall_calls_down[fl] = 1
+                self.hall_calls_down_pressed_at[fl] = self.simenv.now
+            if not down:
+                self.hall_calls_down[fl] = 0
+
             
 
     def trigger_epoch_event(self, event_type):
@@ -209,7 +244,11 @@ class Environment():
             self.logger.debug("generating new passenger! at time {}".format(self.simenv.now))
             floor = random.choices(range(self.nFloor), self.spawnRates)[0]
             # Weight is normally distributed 
-            self.psngr_by_fl[floor].add(Passenger(random.normalvariate(self.avgWeight, 10), floor, self._destination(floor)))
+            self.psngr_by_fl[floor].add(
+                Passenger(
+                    random.normalvariate(self.avgWeight, 10), floor, self._destination(floor), self.simenv.now
+                )
+            )
             if len(self.psngr_by_fl[floor])>=1:
                 self.trigger_epoch_event("PassengerArrival")
 
@@ -245,5 +284,48 @@ class Environment():
             string+="^"*num_psngr_going_up
             string+="v"*num_psngr_going_down
             print(string)
+
+
+    def update_all_loss(self):
+        # Add incremental loss to all elevators and update the last_reward_time
+        for e in self.elevators:
+            e.update_loss(self.calculate_loss(e.last_decision_epoch))
+        self.last_reward_time = self.simenv.now
+        return True
+
+
+    def calculate_loss(self, d):
+        '''
+        Input:
+            d: last decision time of the elevator
+        Output:
+            the incremental loss that need incurred between last 
+            reward calculation time and now
+        '''
+        output = 0
+        # First calculate for all passengers in hall ways
+        for fl in range(self.nFloor):
+            for p in self.psngr_by_fl[fl]:
+                output += self._calculate_loss(
+                              d, self.last_reward_time, self.simenv.now, 
+                              self.last_reward_time-p.created_at, self.simenv.now-p.created_at
+                          )
+        
+        # Then calculate for all passengers in elevators
+        for e in self.elevators:
+            for p in e.carrying:
+                output += self._calculate_loss(
+                              d, self.last_reward_time, self.simenv.now, 
+                              self.last_reward_time-p.created_at, self.simenv.now-p.created_at
+                          )
+
+        return output
+
+    def _calculate_loss(self, d, t0, t1, w0, w1):
+        return Exp(-self.reward_discount*(t0-d))\
+               * (2/self.reward_discount**3 + 2*w0/self.reward_discount**2 + w0**2/self.reward_discount)\
+               - Exp(-self.reward_discount*(t1-d))\
+               * (2/self.reward_discount**3 + 2*w1/self.reward_discount**2 + w1**2/self.reward_discount)
+
 
 
