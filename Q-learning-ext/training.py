@@ -28,7 +28,7 @@ if __name__=="__main__":
 
 # initialize environment
 env = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
-obssize = env.observation_space.low.size # Unimplemented in env
+obssize = env.observation_space.size # Unimplemented in env
 actsize = env.action_space.n # Unimplemented in env
 simulation_hours = 3750
 factor = 0.998
@@ -49,8 +49,8 @@ env_state_dict = env.reset()
 s = env_state_dict["state"] # assume state is given as an entry in env_state_dict
 
 # lists that store the most recent decision state and performed action of each agent
-prev_actions = np.fill(nElevator, None)
-prev_states = np.fill(nElevator, None)
+prev_actions = np.full(nElevator, None)
+prev_states = np.full(nElevator, None)
 
 # main iteration of training
 # assume env.now() gives the total elapsed simulation time in seconds
