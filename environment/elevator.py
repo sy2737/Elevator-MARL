@@ -15,6 +15,8 @@ class Elevator():
     MOVE_IDLE = 5
     IDLE_IDLE = 8
 
+    action_space = np.array([0, 1, 2, 3, 4, 5, 6])
+    action_space_size = len(Elevator.action_space)
     def __init__(self, env, init_floor, weightLimit, id):
         self.env = env
         self.floor = init_floor
@@ -37,6 +39,7 @@ class Elevator():
             5: self._idle_down_idle,
             6: self._idle_idle,
         }
+
         self.env.simenv.process(self.act(6))
 
     def request(self, floor):
@@ -216,6 +219,7 @@ class Elevator():
             onehot_elevator_states,
             time_elapsed
         ])
+        assert(len(state_representation)==self.env.observation_space_size)
         if decision_epoch:
             self.last_decision_epoch = self.env.simenv.now
         return state_representation

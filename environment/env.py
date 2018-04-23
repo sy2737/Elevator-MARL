@@ -48,6 +48,15 @@ class Environment():
         self.epoch_events = None
         self.psngr_by_fl= {floor:set() for floor in range(nFloor)}
         self.decision_elevators = []
+        self.action_space = Elevator.action_space
+        self.action_space_size = Elevator.action_space_size
+        # Need to manually change this...
+        # hall_calls_up, hall_calls_down, hall_call_up_times, hall_call_down_times
+        # onehot_elevator_positions (nFloor positions)
+        # onehot_elevator_states (3 states)
+        # time_elapsed
+        self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + 1
+
 
         self.last_reward_time = 0
         self.reward_discount = 0.01
