@@ -56,6 +56,7 @@ class Environment():
         # onehot_elevator_states (3 states)
         # time_elapsed
         self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + 1
+        self.nPassenger_served = 0
 
 
         self.last_reward_time = 0
@@ -336,5 +337,24 @@ class Environment():
                - Exp(-self.reward_discount*(t1-d))\
                * (2/self.reward_discount**3 + 2*w1/self.reward_discount**2 + w1**2/self.reward_discount)
 
+    @staticmethod
+    def parse_states(state, nFloor, nElevator):
+        '''Returns a dictionary of parsed state vector'''
+        hall_calls_up = state[0:nFloor]
+        hall_calls_down = state[nFloor:nFloor*2]
+        hall_call_up_times = state[nFloor*2:nFloor*3]
+        hall_call_down_times = state[nFloor*3:nFloor*4]
+        onehot_elevator_positions = state[nFloor*4:(nFloor*4+nElevator*nFloor)].reshape(nElevator,nFloor)
+        onehot_elevator_states = state[(nFloor*4+nElevator*nFloor):-1]
+        time_elapsed = state[-1]
+        return {
+            'hall_calls_up':                hall_calls_up,
+            'hall_calls_down':              hall_calls_down,
+            'hall_call_up_times':           hall_call_up_times,
+            'hall_call_down_times':         hall_call_down_times,
+            'onehot_elevator_positions':    onehot_elevator_positions,
+            'onehot_elevator_states':       onehot_elevator_states,
+            'time_elapsed':                 time_elapsed
+        }
 
 

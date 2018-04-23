@@ -16,7 +16,7 @@ class Elevator():
     IDLE_IDLE = 8
 
     action_space = np.array([0, 1, 2, 3, 4, 5, 6])
-    action_space_size = len(Elevator.action_space)
+    action_space_size = 7
     def __init__(self, env, init_floor, weightLimit, id):
         self.env = env
         self.floor = init_floor
@@ -63,6 +63,7 @@ class Elevator():
     
     def leave(self, passenger):
         self.carrying.remove(passenger)
+        self.env.nPassenger_served += 1
         self.carrying_weight = sum([p.weight for p in self.carrying])
         return True
 
@@ -90,7 +91,7 @@ class Elevator():
                 self.logger.debug("Elevator {} is about to idle!".format(self.id))
                 yield self.idling_event
             except simpy.Interrupt:
-                self.logger.debug("Elevator {} is interrupted!".format(self.id))
+                self.logger.info("Elevator {} is interrupted!".format(self.id))
                 pass # Interrupted, so decision epoch came early...
         else:
             yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
