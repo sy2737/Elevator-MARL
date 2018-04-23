@@ -59,6 +59,7 @@ prev_states = np.full(nElevator, None)
 # main iteration of training
 # assume env.now() gives the total elapsed simulation time in seconds
 while env.now() <= simulation_hours * 3600:
+    print("current time is: -----", env.now(), "-----")
     decision_agents = env_state_dict["decision agents"]
     # time_elapsed_list = env_state_dict["time_elapsed"] # a list of nElevator reals, with all other entries 0, but the decision elevator entries None or time elapsed since this agent's last decision
     R = env_state_dict["rewards"]
@@ -80,7 +81,6 @@ while env.now() <= simulation_hours * 3600:
         T = 2.0 * factor ** (round(env.now()/3600,4))
         prob_dist = np.zeros(actsize)
         for a in env.legal_actions(agent):
-            print("please", Q[agent].compute_Qvalues([ss[i]]))
             q_val = Q[agent].compute_Qvalues([ss[i]])[0][a] # Qi(s,a)
             prob_dist[a] = np.exp(q_val/T)
         prob_dist = prob_dist/sum(prob_dist)
