@@ -14,7 +14,7 @@ class NNet(object):
         """
         # build the prediction graph
         states = tf.placeholder(tf.float32, [None, obssize]) # input
-        dense1 = tf.layers.dense(state, 20, activation=tf.sigmoid)
+        dense1 = tf.layers.dense(states, 20, activation=tf.sigmoid)
         Qvalues = tf.layers.dense(dense1,actsize)
 
         targets = tf.placeholder(tf.float32, [None])
@@ -51,4 +51,4 @@ class NNet(object):
         actions: numpy array as input to compute loss (a)
         targets: numpy array as input to compute loss (Q targets)
         """
-        return self.sess.run([self.loss,self.train_op], feed_dict={self.state:states, self.actions:actions, self.targets:targets})
+        return self.sess.run([self.loss,self.train_op], feed_dict={self.states:states, self.actions:actions, self.targets:targets})

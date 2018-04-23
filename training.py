@@ -3,6 +3,8 @@ import random
 import time
 import logging
 from Q_learning_ext.nnet import NNet
+import tensorflow as tf
+import numpy as np
 
 logger = gym.logger.get_my_logger(__name__)
 
@@ -35,7 +37,6 @@ factor = 0.998
 
 # initialize tensorflow session
 sess = tf.Session()
-sess.run(tf.global_variables_initializer())
 
 # optimizer
 optimizer = tf.train.AdamOptimizer(lr)
@@ -44,7 +45,9 @@ optimizer = tf.train.AdamOptimizer(lr)
 Q=[]
 for i in range(nElevator):
     with tf.variable_scope("Q"+str(i)):
-        Q[i] = NNet(obssize, actsize, sess, optimizer)
+        Q.append(NNet(obssize, actsize, sess, optimizer))
+
+sess.run(tf.global_variables_initializer())
 
 env_state_dict = env.reset()
 ss = env_state_dict["states"] # assume state is given as an entry in env_state_dict
@@ -69,15 +72,16 @@ while env.now() <= simulation_hours * 3600:
             legal_action_binary = np.zeros(actsize)
             for a in env.legal_actions(agent):
                 legal_action_binary[a] = 1
-            min_Q_val = np.amin(np.multiply(Q[agent].compute_Qvalues(ss[i])[0], legal_action_binary))
+            min_Q_val = np.amin(np.multiply(Q[agent].compute_Qvalues([ss[i]])[0], legal_action_binary))
             target = R[i] + np.exp(-beta * time_elapsed) * min_Q_val
-            Q[agent].train(np.array([prev_states(agent)]), np.array([prev_actions[agent]]), np.array([target]))
+            Q[agent].train([prev_states[agent]], [prev_actions[agent]], [target])
 
         # agent makes an action choice
         T = 2.0 * factor ** (round(env.now()/3600,4))
         prob_dist = np.zeros(actsize)
         for a in env.legal_actions(agent):
-            q_val = Q[agent].compute_Qvalues(ss[i])[0][a] # Qi(s,a)
+            print("please", Q[agent].compute_Qvalues([ss[i]]))
+            q_val = Q[agent].compute_Qvalues([ss[i]])[0][a] # Qi(s,a)
             prob_dist[a] = np.exp(q_val/T)
         prob_dist = prob_dist/sum(prob_dist)
         action = np.random.choice(actsize, p = prob_dist)
