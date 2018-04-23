@@ -48,6 +48,7 @@ if __name__=="__main__":
         logger.info("  hall_calls_down: \n"+"".join([
             "{:8.3}".format(t) for t in parsed_states["hall_call_down_times"]
         ]))
+        logger.info("Number of passengers served:{}".format(env.nPassenger_served))
 
 
 
@@ -59,5 +60,5 @@ if __name__=="__main__":
 
         # Stone Age rendering ftw.
         s = timed_function(env.step)(actions)
-        env.render(0.5
-        time.sleep(1)
+        env.render()
+        time.sleep(0.5)

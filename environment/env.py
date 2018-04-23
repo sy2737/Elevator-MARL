@@ -329,7 +329,7 @@ class Environment():
                               self.last_reward_time-p.created_at, self.simenv.now-p.created_at
                           )
 
-        return output
+        return output*1e-6
 
     def _calculate_loss(self, d, t0, t1, w0, w1):
         return Exp(-self.reward_discount*(t0-d))\
