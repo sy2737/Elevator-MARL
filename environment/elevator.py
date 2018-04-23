@@ -60,7 +60,7 @@ class Elevator():
         self.env.psngr_by_fl[self.floor].remove(passenger)
         self.carrying_weight += passenger.weight
         return True
-    
+
     def leave(self, passenger):
         self.carrying.remove(passenger)
         self.env.nPassenger_served += 1
@@ -70,7 +70,7 @@ class Elevator():
     def interrupt_idling(self):
         self.idling_event.interrupt()
 
-    
+
     def act(self, action):
         '''
         Six different actions, valid at different states
@@ -78,13 +78,14 @@ class Elevator():
         (0)     Move Move
         (1)     Move Idle
         ( ) IDLE:
-        (2)     UP move 
+        (2)     UP move
         (3)     UP stop
-        (4)     DOWN move 
-        (5)     DOWN stop 
+        (4)     DOWN move
+        (5)     DOWN stop
         (6)     Stay Idle
         '''
         # Staying IDLE is special because it may be interrupted.
+        assert(action in self.legal_actions())
         if action==6:
             self.idling_event = self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
             try:
@@ -97,7 +98,7 @@ class Elevator():
             yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
         self.logger.debug("Triggering Elevator {} arrival!! at time: {}".format(self.id, self.env.simenv.now))
         self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
-    
+
     def _move_move(self):
         # State unchanged, and next event_epoch is some time in the future
         yield self.env.simenv.timeout(self.MOVE_MOVE)
@@ -141,7 +142,7 @@ class Elevator():
         assert self.state==self.IDLE
         # Stay idle for at most sometime, and then decide if it wants to stay idle again
         yield self.env.simenv.timeout(random.normalvariate(self.IDLE_IDLE, 0.01))
-    
+
     def _update_floor(self):
         self.floor += self.state
         for p in self.carrying:
@@ -150,7 +151,7 @@ class Elevator():
     def legal_actions(self):
         legal = set()
         if self.state == self.IDLE:
-            legal.update([2, 3, 4, 5, 6]) 
+            legal.update([2, 3, 4, 5, 6])
             # If almost at the top, you have to stop at the next floor up
             if self.floor == self.env.nFloor-2:
                 legal.remove(2)
@@ -177,7 +178,7 @@ class Elevator():
             return legal
 
     def update_loss(self, loss):
-        # Update the loss inccurred since the last decision epoch 
+        # Update the loss inccurred since the last decision epoch
         self.current_loss += loss
         return True
     def get_loss(self, decision_epoch):
@@ -191,15 +192,15 @@ class Elevator():
         return values==x
     def get_states(self, decision_epoch):
         '''generate state with respect to the elevator's perspective'''
-        
+
         elevator_positions = [self.floor] + [e.floor for e in self.env.elevators if e is not self]
 
         onehot_elevator_positions = np.concatenate([
             self._one_hot_encode(fl, range(self.env.nFloor)) for fl in elevator_positions
         ])
-    
+
         elevator_states = [self.state] + [e.state for e in self.env.elevators if e is not self]
-        
+
         onehot_elevator_states = np.concatenate([
             self._one_hot_encode(
                 state, [self.IDLE, self.MOVING_UP, self.MOVING_DOWN]
@@ -224,4 +225,3 @@ class Elevator():
         if decision_epoch:
             self.last_decision_epoch = self.env.simenv.now
         return state_representation
-

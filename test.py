@@ -28,7 +28,7 @@ if __name__=="__main__":
     avgWeight = 135
     weightLimit = 1200
     loadTime = 1
-    
+
 
     env = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
     s = env.reset()
@@ -54,9 +54,6 @@ if __name__=="__main__":
 
         # Picking action here
         actions = [random.sample(env.legal_actions(agent), 1)[0] for agent in decision_agents]# 0 calls for the legal actions of the first elevator
-
-
-
 
         # Stone Age rendering ftw.
         s = timed_function(env.step)(actions)
