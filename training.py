@@ -57,8 +57,8 @@ saver.restore(sess, ckpt_path)
 print("Model restored.")
 ## ---------------------------------------------------
 ## if train from scratch, switch to the code below
-# sess.run(tf.global_variables_initializer())
-# ckpt_path = "./q_learning_ext_model.ckpt" # specify path to the checkpoint file for model storage
+#sess.run(tf.global_variables_initializer())
+#ckpt_path = "./q_learning_ext_model.ckpt" # specify path to the checkpoint file for model storage
 ## ---------------------------------------------------
 
 
@@ -73,6 +73,7 @@ prev_states = np.full(nElevator, None)
 # main iteration of training
 # env.now() gives the total elapsed simulation time in seconds
 last_checkpoint_time = 0
+print_counter = 0
 while env.now() <= simulation_hours * 3600:
     # save updated graph after every 10 hours of training
     # remember temperature matters; so cannot train in segments
@@ -84,7 +85,7 @@ while env.now() <= simulation_hours * 3600:
     decision_agents = env_state_dict["decision agents"]
     R = env_state_dict["rewards"]
     actions = []
-
+    print_counter += 1
     # each decision agent updates NNet and selects action
     for i in range(len(decision_agents)):
         agent = decision_agents[i]
@@ -118,7 +119,11 @@ while env.now() <= simulation_hours * 3600:
         # len(prob_dist) = len(legal_actions)
         # in ascending order of legal actions' indices
         prob_dist = Q[agent].compute_legal_action_prob_dist([ss[i]], legal_actions_bool, T)
-        print(prob_dist)
+        if print_counter % 500 == 0:
+            print_counter = 0
+            print("action probability distribution", prob_dist)
+            print("Q_vals: ", q_vals)
+            print("reward: ",R[i])
 
         # match legal_actions_list's order with prob_dist's order
         legal_actions_list = list(env.legal_actions(agent))
@@ -136,7 +141,8 @@ while env.now() <= simulation_hours * 3600:
     ss = env_state_dict["states"]
 
     ## uncomment to enable visualization
-    # env.render()
+    if print_counter % 500 == 0:
+        env.render()
 
 # save the final model
 tf.train.Saver().save(sess, ckpt_path)

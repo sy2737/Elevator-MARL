@@ -19,14 +19,28 @@ class NNet(object):
         actions = tf.placeholder(tf.int32, [None])
 
         # build the prediction graph
-        states = tf.placeholder(tf.float32, [None, obssize]) # input
-        dense1 = tf.layers.dense(states, 20, activation=tf.sigmoid)
-        Qvalues = tf.layers.dense(dense1,actsize)
+        L = 100
+        M = 50
+
+        states = tf.placeholder(tf.float32, [None, obssize])
+        W1 = tf.Variable(tf.truncated_normal([obssize, L],stddev=0.1))
+        B1 = tf.Variable(tf.truncated_normal([L], stddev=0.1))
+        
+        W2 = tf.Variable(tf.truncated_normal([L, M],stddev=0.1))
+        B2 = tf.Variable(tf.truncated_normal([M], stddev=0.1))
+        
+        W3 = tf.Variable(tf.truncated_normal([M, actsize],stddev=0.1))
+        B3 = tf.Variable(tf.truncated_normal([actsize], stddev=0.1))
+        
+        Z1 = tf.nn.relu(tf.matmul(states, W1) + B1)
+        Z2 = tf.nn.relu(tf.matmul(Z1, W2) + B2)
+
+        Qvalues = tf.matmul(Z2, W3)+B3
 
         # compute quantities of interest
         actions_one_hot = tf.one_hot(actions, actsize)
         Qpreds = tf.reduce_sum(tf.multiply(Qvalues, actions_one_hot), axis=1)
-        loss = tf.reduce_mean(Qpreds - targets)
+        loss = tf.reduce_mean(tf.square(Qpreds - targets))
 
         # compute softmax prob distribution on legal actions
         legal_action_Qvals = tf.boolean_mask(Qvalues[0], legal_actions)
