@@ -85,7 +85,7 @@ class Elevator():
         (6)     Stay Idle
         '''
         # Staying IDLE is special because it may be interrupted.
-        assert(action in self.legal_actions())
+        assert action in self.legal_actions(), "Agent picked illegal action"
         if action==6:
             self.idling_event = self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
             try:
