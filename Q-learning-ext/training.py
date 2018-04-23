@@ -1,4 +1,4 @@
-import environment as gym
+from .. import environment as gym
 import random
 import time
 import logging
@@ -41,12 +41,13 @@ sess.run(tf.global_variables_initializer())
 optimizer = tf.train.AdamOptimizer(lr)
 
 # initialize NNet for each elevator
-# Q is a list of neural nets, with Q[i] being the neural net for elevator i
+Q=[]
 for i in range(nElevator):
-    Q[i] = NNet(obssize, actsize, sess, optimizer)
+    with tf.variable_scope("Q"+str(i)):
+        Q[i] = NNet(obssize, actsize, sess, optimizer)
 
 env_state_dict = env.reset()
-s = env_state_dict["state"] # assume state is given as an entry in env_state_dict
+ss = env_state_dict["states"] # assume state is given as an entry in env_state_dict
 
 # lists that store the most recent decision state and performed action of each agent
 prev_actions = np.full(nElevator, None)
@@ -55,36 +56,37 @@ prev_states = np.full(nElevator, None)
 # main iteration of training
 # assume env.now() gives the total elapsed simulation time in seconds
 while env.now() <= simulation_hours * 3600:
-    decision_agents = env_state_dict["decision_elevators"]
-    time_elapsed_list = env_state_dict["time_elapsed"] # a list of nElevator reals, with all other entries 0, but the decision elevator entries None or time elapsed since this agent's last decision
-    R = env_state_dict["R"]
+    decision_agents = env_state_dict["decision agents"]
+    # time_elapsed_list = env_state_dict["time_elapsed"] # a list of nElevator reals, with all other entries 0, but the decision elevator entries None or time elapsed since this agent's last decision
+    R = env_state_dict["rewards"]
     actions = []
-    for agent in decision_agents:
+    for i in range(len(decision_agents)):
+        agent = decision_agents[i]
         # agent updates its NNet
         if prev_actions[agent] != None: # if not the first time being decision agent
             # update corresponding NNet
-            time_elapsed = time_elapsed_list[agent]
+            time_elapsed = ss[i][-1]
             legal_action_binary = np.zeros(actsize)
             for a in env.legal_actions(agent):
                 legal_action_binary[a] = 1
-            min_Q-val = np.amin(np.multiply(Q[agent].compute_Qvalues(s)[0], legal_action_binary))
-            target = R[agent] + np.exp(-beta * time_elapsed) * min_Q-val
+            min_Q_val = np.amin(np.multiply(Q[agent].compute_Qvalues(ss[i])[0], legal_action_binary))
+            target = R[i] + np.exp(-beta * time_elapsed) * min_Q_val
             Q[agent].train(np.array([prev_states(agent)]), np.array([prev_actions[agent]]), np.array([target]))
 
         # agent makes an action choice
         T = 2.0 * factor ** (round(env.now()/3600,4))
         prob_dist = np.zeros(actsize)
         for a in env.legal_actions(agent):
-            q_val = Q[agent].compute_Qvalues(s)[0][a] # Qi(s,a)
+            q_val = Q[agent].compute_Qvalues(ss[i])[0][a] # Qi(s,a)
             prob_dist[a] = np.exp(q_val/T)
         prob_dist = prob_dist/sum(prob_dist)
         action = np.random.choice(actsize, p = prob_dist)
         # update
         prev_actions[agent] = action
-        prev_states[agent] = s
+        prev_states[agent] = ss[i]
         actions.append(action)
 
     env_state_dict = timed_function(env.step)(actions) # assume env will be modified so that R[i] is in the dict
     # env needs to set R[agent] = 0
-    s = env_state_dict["state"]
+    ss = env_state_dict["states"]
     env.render()
