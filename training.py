@@ -1,8 +1,8 @@
-from .. import environment as gym
+import environment as gym
 import random
 import time
 import logging
-from .nnet import NNet
+from Q_learning_ext.nnet import NNet
 
 logger = gym.logger.get_my_logger(__name__)
 
@@ -28,8 +28,8 @@ if __name__=="__main__":
 
 # initialize environment
 env = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
-obssize = env.observation_space.size # Unimplemented in env
-actsize = env.action_space.n # Unimplemented in env
+obssize = env.observation_space_size # Unimplemented in env
+actsize = env.action_space_size # Unimplemented in env
 simulation_hours = 3750
 factor = 0.998
 
