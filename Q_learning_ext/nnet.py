@@ -13,24 +13,23 @@ class NNet(object):
         optimizer:
         """
         # placeholders
-        legal_actions = tf.placeholder(tf.float32, [None])
+        legal_actions = tf.placeholder(tf.bool, actsize)
         temperature = tf.placeholder(tf.float32)
+        targets = tf.placeholder(tf.float32, [None])
+        actions = tf.placeholder(tf.int32, [None])
 
         # build the prediction graph
         states = tf.placeholder(tf.float32, [None, obssize]) # input
         dense1 = tf.layers.dense(states, 20, activation=tf.sigmoid)
         Qvalues = tf.layers.dense(dense1,actsize)
 
-        targets = tf.placeholder(tf.float32, [None])
-        actions = tf.placeholder(tf.int32, [None])
-
+        # compute quantities of interest
         actions_one_hot = tf.one_hot(actions, actsize)
-
         Qpreds = tf.reduce_sum(tf.multiply(Qvalues, actions_one_hot), axis=1)
         loss = tf.reduce_mean(Qpreds - targets)
 
         # compute softmax prob distribution on legal actions
-        legal_action_Qvals = Qvalues[legal_actions]
+        legal_action_Qvals = tf.boolean_mask(Qvalues[0], legal_actions)
         legal_actions_dist = tf.nn.softmax(legal_action_Qvals/temperature)
 
         # optimization
@@ -45,6 +44,7 @@ class NNet(object):
         self.sess = sess
         self.legal_actions = legal_actions
         self.temperature = temperature
+        self.legal_actions_dist = legal_actions_dist
 
     def compute_Qvalues(self, states):
         """
@@ -63,8 +63,8 @@ class NNet(object):
         """
         return self.sess.run([self.loss,self.train_op], feed_dict={self.states:states, self.actions:actions, self.targets:targets})
 
-    def compute_legal_action_prob_dist(self, legal_actions):
+    def compute_legal_action_prob_dist(self, states, legal_actions, temperature):
         """
         legal_actions: numpy array as input to prob_dist
         """
-        return self.sess.run(self.legal_actions_dist, feed_dict={self.legal_actions:legal_actions, self.temperature:temperature})
+        return self.sess.run(self.legal_actions_dist, feed_dict={self.states:states, self.legal_actions:legal_actions, self.temperature:temperature})
