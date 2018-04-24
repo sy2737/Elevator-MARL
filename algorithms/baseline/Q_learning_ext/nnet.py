@@ -19,19 +19,19 @@ class NNet(object):
         actions = tf.placeholder(tf.int32, [None])
 
         # build the prediction graph
-        L = 100
-        M = 50
+        L = 50
+        M = 20
 
         states = tf.placeholder(tf.float32, [None, obssize])
         W1 = tf.Variable(tf.truncated_normal([obssize, L],stddev=0.1))
         B1 = tf.Variable(tf.truncated_normal([L], stddev=0.1))
-        
+
         W2 = tf.Variable(tf.truncated_normal([L, M],stddev=0.1))
         B2 = tf.Variable(tf.truncated_normal([M], stddev=0.1))
-        
+
         W3 = tf.Variable(tf.truncated_normal([M, actsize],stddev=0.1))
         B3 = tf.Variable(tf.truncated_normal([actsize], stddev=0.1))
-        
+
         Z1 = tf.nn.relu(tf.matmul(states, W1) + B1)
         Z2 = tf.nn.relu(tf.matmul(Z1, W2) + B2)
 

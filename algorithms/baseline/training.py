@@ -1,3 +1,5 @@
+import sys
+sys.path.insert(0, '/Users/shatianwang/Desktop/Elevator-MARL-Environment')
 import environment as gym
 import random
 import time
@@ -51,14 +53,14 @@ for i in range(nElevator):
 
 # if resume training using prev trained model
 # Use the saver to restore trained model from disk
-ckpt_path = "./q_learning_ext_model.ckpt" # specify path to the checkpoint file
-saver = tf.train.Saver()
-saver.restore(sess, ckpt_path)
-print("Model restored.")
+# ckpt_path = "./q_learning_ext_model.ckpt" # specify path to the checkpoint file
+# saver = tf.train.Saver()
+# saver.restore(sess, ckpt_path)
+# print("Model restored.")
 ## ---------------------------------------------------
-## if train from scratch, switch to the code below
-#sess.run(tf.global_variables_initializer())
-#ckpt_path = "./q_learning_ext_model.ckpt" # specify path to the checkpoint file for model storage
+# if train from scratch, switch to the code below
+sess.run(tf.global_variables_initializer())
+ckpt_path = "./q_learning_ext_model.ckpt" # specify path to the checkpoint file for model storage
 ## ---------------------------------------------------
 
 
@@ -93,14 +95,16 @@ while env.now() <= simulation_hours * 3600:
         # Update NNet
         # extract Q values in current state
         q_vals = Q[agent].compute_Qvalues([ss[i]])[0]
+
+        # construct legal_actions_list, in ascending order of action index
+        legal_actions_list = list(env.legal_actions(agent))
+        legal_actions_list.sort()
+
         if prev_actions[agent] != None: # if not the first time being a decision agent
             # update corresponding NNet
             time_elapsed = ss[i][-1]
             # compute min Q value in current state
-            legal_action_binary = np.zeros(actsize)
-            for a in env.legal_actions(agent):
-                legal_action_binary[a] = 1
-            min_Q_val = np.amin(np.multiply(q_vals, legal_action_binary))
+            min_Q_val = np.amin(q_vals[legal_actions_list])
             # compute target Q value of PREVIOUS state, action pair
             target = R[i] + np.exp(-beta * time_elapsed) * min_Q_val
             # update agent's NNet parameters
@@ -122,12 +126,8 @@ while env.now() <= simulation_hours * 3600:
         if print_counter % 500 == 0:
             print_counter = 0
             print("action probability distribution", prob_dist)
-            print("Q_vals: ", q_vals)
+            print("Q_vals: ", q_vals[legal_actions_list])
             print("reward: ",R[i])
-
-        # match legal_actions_list's order with prob_dist's order
-        legal_actions_list = list(env.legal_actions(agent))
-        legal_actions_list.sort()
 
         # sample a legal action from prob_dist of legal actions
         action = np.random.choice(legal_actions_list, p = prob_dist)
