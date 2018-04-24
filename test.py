@@ -39,15 +39,21 @@ if __name__=="__main__":
 
 
         # A bunch of printing stuff for debugging
+        parsed_states = gym.Environment.parse_states(states[0], nFloor, nElevator)
 
         logger.info("Rewards of decision elevators: {}".format(rewards))
-        parsed_states = gym.Environment.parse_states(states[0], nFloor, nElevator)
+
         logger.info("  hall_calls_up: \n"+"".join([
             "{:8.3}".format(t) for t in parsed_states["hall_call_up_times"]
         ]))
+
         logger.info("  hall_calls_down: \n"+"".join([
             "{:8.3}".format(t) for t in parsed_states["hall_call_down_times"]
         ]))
+        logger.info("Floor requests from within elevator {}:\n{}".format(
+            decision_agents[0], parsed_states['requested_calls']
+        ))
+
         logger.info("Number of passengers served:{}".format(env.nPassenger_served))
 
 

@@ -54,8 +54,9 @@ class Environment():
         # hall_calls_up, hall_calls_down, hall_call_up_times, hall_call_down_times
         # onehot_elevator_positions (nFloor positions)
         # onehot_elevator_states (3 states)
+        # requested_calls
         # time_elapsed
-        self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + 1
+        self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + nFloor + 1
         self.nPassenger_served = 0
 
 
@@ -345,7 +346,11 @@ class Environment():
         hall_call_up_times = state[nFloor*2:nFloor*3]
         hall_call_down_times = state[nFloor*3:nFloor*4]
         onehot_elevator_positions = state[nFloor*4:(nFloor*4+nElevator*nFloor)].reshape(nElevator,nFloor)
-        onehot_elevator_states = state[(nFloor*4+nElevator*nFloor):-1]
+        onehot_elevator_states = state[
+            (nFloor*4+nElevator*nFloor):
+            ((nFloor*4+nElevator*nFloor)+(nElevator*Elevator.nState))
+        ]
+        requested_calls = state[((nFloor*4+nElevator*nFloor)+(nElevator*Elevator.nState)): -1]
         time_elapsed = state[-1]
         return {
             'hall_calls_up':                hall_calls_up,
@@ -354,6 +359,7 @@ class Environment():
             'hall_call_down_times':         hall_call_down_times,
             'onehot_elevator_positions':    onehot_elevator_positions,
             'onehot_elevator_states':       onehot_elevator_states,
+            'requested_calls':              requested_calls,
             'time_elapsed':                 time_elapsed
         }
 

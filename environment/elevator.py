@@ -6,6 +6,7 @@ from .logger import get_my_logger
 class Elevator():
     # Action functions that elevators have
     # States of the elevator
+    nState = 3 # Number of states
     IDLE = 0
     MOVING_UP = 1
     MOVING_DOWN = -1
@@ -210,6 +211,11 @@ class Elevator():
         hall_call_up_times = (self.env.simenv.now - self.env.hall_calls_up_pressed_at)*self.env.hall_calls_up
         hall_call_down_times = (self.env.simenv.now - self.env.hall_calls_down_pressed_at)*self.env.hall_calls_down
 
+        # Floor calls from within
+        requested_calls = [False]*self.env.nFloor
+        for fl in self.requested_fls:
+            requested_calls[fl] = True
+
         time_elapsed = [self.env.simenv.now-self.last_decision_epoch]
 
         state_representation = np.concatenate([
@@ -219,6 +225,7 @@ class Elevator():
             hall_call_down_times,
             onehot_elevator_positions,
             onehot_elevator_states,
+            requested_calls,
             time_elapsed
         ])
         assert(len(state_representation)==self.env.observation_space_size)
