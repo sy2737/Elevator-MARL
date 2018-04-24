@@ -1,2 +1,0 @@
-model_checkpoint_path: "q_learning_ext_model.ckpt"
-all_model_checkpoint_paths: "q_learning_ext_model.ckpt"
