@@ -1,3 +1,5 @@
+import sys
+sys.path.insert(0, '/Users/shatianwang/Desktop/Elevator-MARL-Environment')
 import environment as gym
 import random
 import time
@@ -19,8 +21,8 @@ def timed_function(func):
 
 if __name__=="__main__":
     logging.disable(logging.NOTSET)
-    nElevator = 5
-    nFloor = 10
+    nElevator = 2
+    nFloor = 8
     spawnRates = [1/30]+[1/180]*(nFloor-1)
     avgWeight = 135
     weightLimit = 1200
@@ -49,7 +51,7 @@ for i in range(nElevator):
 
 # Use the saver to restore trained model from disk
 saver = tf.train.Saver()
-saver.restore(sess, "./q_learning_ext_model.ckpt")
+saver.restore(sess, "./2E_8F/2E_8F_q_learning_ext_model.ckpt")
 print("Model restored.")
 
 env_state_dict = env.reset()
@@ -67,7 +69,7 @@ while env.now() <= eval_hours * 3600:
         legal_actions_bool = np.full(actsize, False)
         for action in env.legal_actions(agent):
             legal_actions_bool[action] = True
-        prob_dist = Q[agent].compute_legal_action_prob_dist([ss[i]], legal_actions_bool, 0.000001) 
+        prob_dist, _ = Q[agent].compute_legal_action_prob_dist([ss[i]], legal_actions_bool, 0.000001)
         print(prob_dist)
 
         legal_actions_list = list(env.legal_actions(agent))
@@ -75,8 +77,12 @@ while env.now() <= eval_hours * 3600:
         action = np.random.choice(legal_actions_list, p = prob_dist)
         # update prev_actions and prev_states lists
         actions.append(action)
+        # print("state representation: ", ss[i])
+        print("requested calls from within: ", ss[i][-9:-1])
+        # print("reward: ", env_state_dict["rewards"][i])
 
     env_state_dict = timed_function(env.step)(actions)
     ss = env_state_dict["states"]
+
     env.render()
     time.sleep(0.5)

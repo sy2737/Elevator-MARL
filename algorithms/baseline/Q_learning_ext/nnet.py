@@ -19,8 +19,8 @@ class NNet(object):
         actions = tf.placeholder(tf.int32, [None])
 
         # build the prediction graph
-        L = 50
-        M = 20
+        L = np.int(np.floor(actsize/2))
+        M = np.int(np.floor(L/2))
 
         states = tf.placeholder(tf.float32, [None, obssize])
         W1 = tf.Variable(tf.truncated_normal([obssize, L],stddev=0.1))
@@ -44,7 +44,7 @@ class NNet(object):
 
         # compute softmax prob distribution on legal actions
         legal_action_Qvals = tf.boolean_mask(Qvalues[0], legal_actions)
-        legal_actions_dist = tf.nn.softmax(legal_action_Qvals/temperature)
+        legal_actions_dist = tf.nn.softmax(-legal_action_Qvals/temperature)
 
         # optimization
         self.train_op = optimizer.minimize(loss)
@@ -59,6 +59,7 @@ class NNet(object):
         self.legal_actions = legal_actions
         self.temperature = temperature
         self.legal_actions_dist = legal_actions_dist
+        self.legal_action_Qvals = legal_action_Qvals
 
     def compute_Qvalues(self, states):
         """
@@ -75,10 +76,10 @@ class NNet(object):
         actions: numpy array as input to compute loss (a)
         targets: numpy array as input to compute loss (Q targets)
         """
-        return self.sess.run([self.loss,self.train_op], feed_dict={self.states:states, self.actions:actions, self.targets:targets})
+        return self.sess.run([self.loss, self.train_op], feed_dict={self.states:states, self.actions:actions, self.targets:targets})
 
     def compute_legal_action_prob_dist(self, states, legal_actions, temperature):
         """
         legal_actions: numpy array as input to prob_dist
         """
-        return self.sess.run(self.legal_actions_dist, feed_dict={self.states:states, self.legal_actions:legal_actions, self.temperature:temperature})
+        return self.sess.run([self.legal_actions_dist, self.legal_action_Qvals], feed_dict={self.states:states, self.legal_actions:legal_actions, self.temperature:temperature})

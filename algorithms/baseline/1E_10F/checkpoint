@@ -1,0 +1,2 @@
+model_checkpoint_path: "1E_10F_q_learning_ext_model.ckpt"
+all_model_checkpoint_paths: "1E_10F_q_learning_ext_model.ckpt"
