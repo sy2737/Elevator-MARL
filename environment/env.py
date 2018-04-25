@@ -58,6 +58,7 @@ class Environment():
         # time_elapsed
         self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + nFloor + 1
         self.nPassenger_served = 0
+        self.wait_time_of_served = 0
 
 
         self.last_reward_time = 0
@@ -341,6 +342,9 @@ class Environment():
                * (2/self.reward_discount**3 + 2*w0/self.reward_discount**2 + w0**2/self.reward_discount)\
                - Exp(-self.reward_discount*(t1-d))\
                * (2/self.reward_discount**3 + 2*w1/self.reward_discount**2 + w1**2/self.reward_discount)
+
+    def avg_wait_time(self):
+        return self.wait_time_of_served/self.nPassenger_served
 
     @staticmethod
     def parse_states(state, nFloor, nElevator):
