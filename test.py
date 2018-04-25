@@ -21,7 +21,7 @@ def timed_function(func):
 
 
 if __name__=="__main__":
-    logging.disable(logging.DEBUG)
+    logging.disable(logging.NOTSET)
     nElevator = 3
     nFloor = 14
     spawnRates = [1/30]+[1/180]*(nFloor-1)

@@ -16,6 +16,12 @@ class Elevator():
     MOVE_IDLE = 5
     IDLE_IDLE = 8
 
+    # Intent 
+    INTENT_IDLE = 0
+    INTENT_DOWN = -1
+    INTENT_UP = 1
+    INTENT_NOT_SET = 2
+
     action_space = np.array([0, 1, 2, 3, 4, 5, 6])
     action_space_size = 7
     def __init__(self, env, init_floor, weightLimit, id):
@@ -26,6 +32,7 @@ class Elevator():
         self.carrying_weight = 0
         self.weight_limit = weightLimit
         self.state = self.IDLE
+        self.intent = self.INTENT_IDLE
         self.id = id
         self.current_loss = 0
         self.last_decision_epoch = self.env.simenv.now
@@ -39,6 +46,9 @@ class Elevator():
             4: self._idle_down_move,
             5: self._idle_down_idle,
             6: self._idle_idle,
+            7: self._idle_intend_up,
+            8: self._idle_intend_down,
+            9: self._idle_intend_idle,
         }
 
         self.env.simenv.process(self.act(6))
@@ -84,6 +94,10 @@ class Elevator():
         (4)     DOWN move
         (5)     DOWN stop
         (6)     Stay Idle
+        ( ) Declaring Intent:
+        (7)     Intent Up
+        (8)     Intent Down
+        (9)     Intent Idle
         '''
         # Staying IDLE is special because it may be interrupted.
         assert action in self.legal_actions(), "Agent picked illegal action"
@@ -94,55 +108,79 @@ class Elevator():
                 yield self.idling_event
             except simpy.Interrupt:
                 self.logger.info("Elevator {} is interrupted!".format(self.id))
-                pass # Interrupted, so decision epoch came early...
+                # Interrupted, so decision epoch came early...
+                self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
+
         else:
+            self.logger.debug("Agent {} picked action: {}".format(self.id, self.ACTION_FUNCTION_MAP[action].__name__))
             yield self.env.simenv.process(self.ACTION_FUNCTION_MAP[action]())
-        self.logger.debug("Triggering Elevator {} arrival!! at time: {}".format(self.id, self.env.simenv.now))
-        self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
 
     def _move_move(self):
+        self.intent = self.INTENT_NOT_SET
         # State unchanged, and next event_epoch is some time in the future
         yield self.env.simenv.timeout(self.MOVE_MOVE)
         self._update_floor()
+        self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
 
     def _move_idle(self):
+        self.intent = self.INTENT_NOT_SET
         yield self.env.simenv.timeout(self.MOVE_IDLE)
         self._update_floor()
         self.state = self.IDLE
+        self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
 
     def _idle_up_move(self):
-        # Specify the intended direction first
+        self.intent = self.INTENT_NOT_SET
         self.state = self.MOVING_UP
-        # Load the passengers
-        yield self.env.generate_loading_event(self)
         # Move
         yield self.env.simenv.timeout(self.MOVE_IDLE)
         self._update_floor()
+        self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
 
     def _idle_up_idle(self):
+        self.intent = self.INTENT_NOT_SET
         self.state = self.MOVING_UP
-        yield self.env.generate_loading_event(self)
         yield self.env.simenv.timeout(self.IDLE_IDLE)
         self._update_floor()
         self.state = self.IDLE
+        self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
 
     def _idle_down_move(self):
+        self.intent = self.INTENT_NOT_SET
         self.state = self.MOVING_DOWN
-        yield self.env.generate_loading_event(self)
         yield self.env.simenv.timeout(self.MOVE_IDLE)
         self._update_floor()
+        self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
 
     def _idle_down_idle(self):
+        self.intent = self.INTENT_NOT_SET
         self.state = self.MOVING_DOWN
-        yield self.env.generate_loading_event(self)
         yield self.env.simenv.timeout(self.IDLE_IDLE)
         self._update_floor()
         self.state = self.IDLE
+        self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
 
     def _idle_idle(self):
+        self.intent = self.INTENT_NOT_SET
         assert self.state==self.IDLE
         # Stay idle for at most sometime, and then decide if it wants to stay idle again
         yield self.env.simenv.timeout(random.normalvariate(self.IDLE_IDLE, 0.01))
+        self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
+
+    def _idle_intend_up(self):
+        self.intent = self.INTENT_UP
+        yield self.env.generate_loading_event(self)
+        self.env.trigger_epoch_event("LoadingFinished_{}".format(self.id))
+
+    def _idle_intend_down(self):
+        self.intent = self.INTENT_DOWN
+        yield self.env.generate_loading_event(self)
+        self.env.trigger_epoch_event("LoadingFinished_{}".format(self.id))
+
+    def _idle_intend_idle(self):
+        self.intent = self.INTENT_IDLE
+        yield self.env.generate_loading_event(self)
+        self.env.trigger_epoch_event("LoadingFinished_{}".format(self.id))
 
     def _update_floor(self):
         self.floor += self.state
@@ -152,23 +190,29 @@ class Elevator():
     def legal_actions(self):
         legal = set()
         if self.state == self.IDLE:
-            legal.update([2, 3, 4, 5, 6])
-            # If almost at the top, you have to stop at the next floor up
-            if self.floor == self.env.nFloor-2:
-                legal.remove(2)
-            # If at the top, you can't move up
-            if self.floor == self.env.nFloor-1:
-                legal.remove(2)
-                legal.remove(3)
+            # If the intent is not declared, then you need to declare intent
+            # Intent to move up is illegal at the top floor
+            # Intent to move down is illegal at the bottom floor
+            if self.intent == self.INTENT_NOT_SET:
+                legal.update([7, 8, 9])
+                if self.floor == 0:
+                    legal.remove(8)
+                if self.floor == self.env.nFloor-1:
+                    legal.remove(7)
 
-            # If almost at the bottom, you have to stop at the next floow below
-            if self.floor == 1:
-                legal.remove(4)
-            # If at the bottom, you can't move down
-            if self.floor == 0:
-                legal.remove(4)
-                legal.remove(5)
-            return legal
+            elif self.intent == self.INTENT_UP:
+                legal.update([2, 3])
+                # If almost at the top, you have to stop at the next floor up
+                if self.floor == self.env.nFloor-2:
+                    legal.remove(2)
+            elif self.intent == self.INTENT_DOWN:
+                legal.update([4, 5])
+                # If almost at the bottom, you have to stop at the next floow below
+                if self.floor == 1:
+                    legal.remove(4)
+            else:
+                # the only option after declaring intent to idle is to idle
+                legal.update([6,])
 
         else:
             legal.update([0,1])
@@ -176,12 +220,13 @@ class Elevator():
                 legal.remove(0)
             if self.floor == 1 and self.state==self.MOVING_DOWN:
                 legal.remove(0)
-            return legal
+        return legal
 
     def update_loss(self, loss):
         # Update the loss inccurred since the last decision epoch
         self.current_loss += loss
         return True
+
     def get_loss(self, decision_epoch):
         output = self.current_loss
         if decision_epoch:
@@ -191,6 +236,7 @@ class Elevator():
     def _one_hot_encode(self, x, values):
         values = np.array(values)
         return values==x
+
     def get_states(self, decision_epoch):
         '''generate state with respect to the elevator's perspective'''
 

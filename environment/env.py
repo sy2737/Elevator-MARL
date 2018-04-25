@@ -90,26 +90,23 @@ class Environment():
             self.update_all_loss()
             # There can be multiple events finished (when passenger arrives and multiple elevators go into decision mode)
 
-            # TODO: Here is where we process the events
-            # We calculate total weighting time etc, and assign loading events
+            # Here is where we process the events
+            # We calculate total waiting time etc, and assign loading events
             # If the event_type qualifies as a decision epoch then break 
             # out of the while loop and return the appropriate state 
-            if len(finished_events)>1:
-                for e in finished_events:
-                    assert("ElevatorArrival" in e.value)
             for event in finished_events:
                 event_type = event.value
                 if "ElevatorArrival" in event_type:
                     decision = self._process_elevator_arrival(event_type)
                 elif event_type == "PassengerArrival":
                     decision = self._process_passenger_arrival()
+                elif "LoadingFinished" in event_type:
+                    decision = self._process_loading_finished(event_type)
                 else:
                     raise ValueError("Unimplemented event type: {}".format(event_type))
             if decision:
                 break
 
-        # TODO: elevator should handle what kind of env state representation it wants to return
-        #       It should only return state values in formats that it sees
         self.logger.info("Decision epoch triggered at time {:8.3f}, by event type: {}".format(
             self.simenv.now, [event.value for event in finished_events])
         )
@@ -133,7 +130,8 @@ class Environment():
         for idx in range(self._elevator_candidate, self.nElevator):
             e = self.elevators[idx]
             self._elevator_candidate += 1
-            if e.state == self.elevators[0].IDLE:
+            # An elevator can only be interrupted when it has not set its' intent and is idling
+            if e.intent == e.INTENT_NOT_SET and e.state == e.IDLE:
                 self.logger.debug("INTERRUPTING ELEVATOR {}, at time {}".format(e.id, self.simenv.now))
                 e.interrupt_idling()
         return False
@@ -148,6 +146,10 @@ class Environment():
             self._elevator_candidate = 0
         return False
 
+    def _process_loading_finished(self, event_type):
+        self.decision_elevators.append(int(event_type.split('_')[-1]))
+        return True
+
     def generate_loading_event(self, elevator):
         '''Elevator calls this function when it reaches a floor and is ready to load'''
         num_loaded = 0
@@ -160,12 +162,12 @@ class Environment():
 
         waiting = [p for p in self.psngr_by_fl[elevator.floor]]
         for p in waiting:
-            if Sign(p.destination-elevator.floor) == elevator.state:
+            if Sign(p.destination-elevator.floor) == elevator.intent:
                 if p.enter(elevator):
                     num_loaded += 1
             
         self._update_hall_calls()
-        return self.simenv.timeout(2+max(0,random.normalvariate(Log(1+num_loaded)*self.loadTime, 1)))
+        return self.simenv.timeout((2+max(0,random.normalvariate(Log(1+num_loaded)*self.loadTime, 1)))*(num_loaded>0))
 
     def now(self):
         return self.simenv.now
@@ -212,6 +214,8 @@ class Environment():
         }
         for idx in range(self.nElevator):
             self.epoch_events["ElevatorArrival_{}".format(idx)] = self.simenv.event()
+        for idx in range(self.nElevator):
+            self.epoch_events["LoadingFinished_{}".format(idx)] = self.simenv.event()
 
         self.hall_calls_up = np.zeros(self.nFloor)
         self.hall_calls_up_pressed_at = np.zeros(self.nFloor)
