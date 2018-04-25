@@ -167,7 +167,7 @@ class Environment():
                 if p.enter(elevator):
                     num_loaded += 1
             
-        self._update_hall_calls()
+        self._update_hall_calls(elevator.floor, elevator.intent)
         return self.simenv.timeout((2+max(0,random.normalvariate(Log(1+num_loaded)*self.loadTime, 1)))*(num_loaded>0))
 
     def now(self):
@@ -225,15 +225,21 @@ class Environment():
 
         return self.step([-1])
 
-    def _update_hall_calls(self):
+    def _update_hall_calls(self, reset_floor=None, direction=None):
         for fl in range(self.nFloor):
             up = False
             down = False
             for p in self.psngr_by_fl[fl]:
                 if p.destination > fl:
                     up = True
+                    # Even if this floor's request wasn't completely filled, the time should be updated
+                    if fl==reset_floor and direction==1:
+                        self.hall_calls_up_pressed_at[fl] = self.simenv.now
                 elif p.destination < fl:
                     down = True
+                    # Even if this floor's request wasn't completely filled, the time should be updated
+                    if fl==reset_floor and direction==-1:
+                        self.hall_calls_up_pressed_at[fl] = self.simenv.now
                 else:
                     raise ValueError("Passenger's floor is equal to the destination?")
             if up and not self.hall_calls_up[fl]:

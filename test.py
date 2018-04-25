@@ -24,7 +24,7 @@ if __name__=="__main__":
     logging.disable(logging.NOTSET)
     nElevator = 3
     nFloor = 14
-    spawnRates = [1/30]+[1/180]*(nFloor-1)
+    spawnRates = [1/60]+[1/180]*(nFloor-1)
     avgWeight = 135
     weightLimit = 1200
     loadTime = 1
@@ -64,4 +64,4 @@ if __name__=="__main__":
         # Stone Age rendering ftw.
         s = timed_function(env.step)(actions)
         env.render()
-        time.sleep(0.5)
+        time.sleep(0.3)

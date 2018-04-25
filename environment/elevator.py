@@ -22,8 +22,8 @@ class Elevator():
     INTENT_UP = 1
     INTENT_NOT_SET = 2
 
-    action_space = np.array([0, 1, 2, 3, 4, 5, 6])
-    action_space_size = 7
+    action_space = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    action_space_size = 10
     def __init__(self, env, init_floor, weightLimit, id):
         self.env = env
         self.floor = init_floor
@@ -75,6 +75,7 @@ class Elevator():
     def leave(self, passenger):
         self.carrying.remove(passenger)
         self.env.nPassenger_served += 1
+        self.env.wait_time_of_served += (passenger.created_at - self.env.now())
         self.carrying_weight = sum([p.weight for p in self.carrying])
         return True
 
