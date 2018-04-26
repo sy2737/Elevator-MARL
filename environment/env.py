@@ -55,8 +55,9 @@ class Environment():
         # onehot_elevator_positions (nFloor positions)
         # onehot_elevator_states (3 states)
         # requested_calls
+        # carrying_weight
         # time_elapsed
-        self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + nFloor + 1
+        self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + nFloor + 1 + 1
         self.nPassenger_served = 0
         self.wait_time_of_served = 0
 
@@ -364,7 +365,8 @@ class Environment():
             (nFloor*4+nElevator*nFloor):
             ((nFloor*4+nElevator*nFloor)+(nElevator*Elevator.nState))
         ]
-        requested_calls = state[((nFloor*4+nElevator*nFloor)+(nElevator*Elevator.nState)): -1]
+        requested_calls = state[((nFloor*4+nElevator*nFloor)+(nElevator*Elevator.nState)): -2]
+        carrying_weight = state[-2]
         time_elapsed = state[-1]
         return {
             'hall_calls_up':                hall_calls_up,
@@ -374,6 +376,7 @@ class Environment():
             'onehot_elevator_positions':    onehot_elevator_positions,
             'onehot_elevator_states':       onehot_elevator_states,
             'requested_calls':              requested_calls,
+            'carrying_weight':              carrying_weight,
             'time_elapsed':                 time_elapsed
         }
 

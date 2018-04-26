@@ -75,7 +75,8 @@ class Elevator():
     def leave(self, passenger):
         self.carrying.remove(passenger)
         self.env.nPassenger_served += 1
-        self.env.wait_time_of_served += (passenger.created_at - self.env.now())
+        self.env.wait_time_of_served += (self.env.now() - passenger.created_at)
+
         self.carrying_weight = sum([p.weight for p in self.carrying])
         return True
 
@@ -273,9 +274,10 @@ class Elevator():
             onehot_elevator_positions,
             onehot_elevator_states,
             requested_calls,
+            [self.carrying_weight],
             time_elapsed
         ])
-        assert(len(state_representation)==self.env.observation_space_size)
+        assert len(state_representation)==self.env.observation_space_size, "should probably modify the obs_space in env.py to match the state output of Elevator.get_states()"
         if decision_epoch:
             self.last_decision_epoch = self.env.simenv.now
         return state_representation
