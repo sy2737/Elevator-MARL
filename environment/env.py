@@ -208,6 +208,17 @@ class Environment():
           - simluation environment
           - decision_epoch events
         '''
+        self.elevators = None
+        self.epoch_events = None
+        self.psngr_by_fl= {floor:set() for floor in range(self.nFloor)}
+        self.decision_elevators = []
+        self.nPassenger_served = 0
+        self.wait_time_of_served = 0
+        self.last_reward_time = 0
+        self.reward_discount = 0.01
+        self._elevator_candidate = 0
+
+        self.simenv = simpy.Environment()
         self.simenv.process(self.passenger_generator())
         self.elevators = [Elevator(self, 0, self.weightLimit, id) for id in range(self.nElevator)]
         # TODO: will need to modify this part to differentiate different elevators
@@ -351,7 +362,9 @@ class Environment():
                * (2/self.reward_discount**3 + 2*w1/self.reward_discount**2 + w1**2/self.reward_discount)
 
     def avg_wait_time(self):
-        return self.wait_time_of_served/self.nPassenger_served
+        if self.nPassenger_served > 0 :
+            return self.wait_time_of_served/self.nPassenger_served
+        return -1
 
     @staticmethod
     def parse_states(state, nFloor, nElevator):

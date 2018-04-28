@@ -36,6 +36,8 @@ class Actor():
         Z1 = tf.nn.relu(tf.matmul(state, W1) + B1)
         Z2 = tf.nn.relu(tf.matmul(Z1, W2) + B2)
         logit = tf.matmul(Z2, W3) + B3
+        logit = tf.Print(logit,[logit], "actor logit: ")
+        
         prob = tf.nn.softmax(logit)  # prob is of shape [None, actsize]
         
         # BUILD LOSS
@@ -46,11 +48,9 @@ class Actor():
         
 
         prob_i = tf.reduce_sum(tf.multiply(prob, actions_onehot), axis=1)
-        #prob_i = tf.Print(prob_i, [prob_i], "Prob_i: ")
         old_prob_i = tf.reduce_sum(tf.multiply(old_prob, actions_onehot), axis=1)
         
         ratio = tf.divide(prob_i, old_prob_i)
-        #ratio = tf.Print(ratio, [ratio], "Ratio: ")
         
         surrogate_loss = tf.negative(tf.reduce_mean(tf.minimum(
             tf.multiply(ratio, Q_estimate),
@@ -156,8 +156,8 @@ if __name__=="__main__":
     starter_learning_rate      = 1e-3
     lr_alpha                   = 3e-4 # tf.train.exponential_decay(starter_learning_rate, global_step_alpha, 100, 0.95, staircase=True)
     lr_beta                    = 3e-4 # tf.train.exponential_decay(starter_learning_rate, global_step_beta, 100, 0.95, staircase=True)
-    numtrajs                   = 1    # num of trajecories to collect at each iteration 
-    episode_length             = 0.1    # Number of hours to run the episode for
+    numtrajs                   = 5    # num of trajecories to collect at each iteration 
+    episode_length             = 5    # Number of hours to run the episode for
     iterations                 = 50   # total num of iterations
     gamma                      = 1    # discount
     lmbda                      = 1    # GAE estimation factor
@@ -172,61 +172,10 @@ if __name__=="__main__":
     weightLimit        = 1200
     loadTime           = 1
 
-    def eval_func():
-        eval_episodes = 2
-        record = []
-        record2 = []
-        env = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
-        eval_mode = True
-        for ite in range(eval_episodes):
-            obs = env.reset()
-            done = False
-            rsum = {agent: 0 for agent in range(nElevator)}
-            while env.now()<3600*episode_length:
-                decision_agents  = obs["decision agents"]
-                states           = obs["states"]
-                rewards          = obs["rewards"]
-                actions = []
-                # take actions
-                for idx, agent in enumerate(decision_agents):
-                    legal_actions = list(env.legal_actions(agent))
-                    prob   = actors[agent].compute_prob(np.expand_dims(states[idx],0)).flatten()
-                    prob   = np.array([prob[i] for i in legal_actions])
-                    if sum(prob)==0:
-                        prob = np.ones(len(legal_actions))
-                    prob   = prob/sum(prob)
-
-                    action = np.random.choice(legal_actions, p=prob, size=1)
-                    actions.append(action[0])
-
-                # record
-                for idx, agent in enumerate(decision_agents):
-                    obss[agent].append(states[idx])
-                    acts[agent].append(actions[idx])
-                    # Taking the negative of rewards because the environment gives us losses
-                    rews[agent].append(rewards[idx])
-                    rsum[agent] += rewards[idx]
-                
-                newobs = env.step(actions)
-
-                # update
-                obs = newobs
-
-            record.append(env.avg_wait_time())
-            record2.append([rsum[agent] for agent in range(nElevator)])
-
-        logger.warning("Avg wait time of passegners in each episode: {}".format(record))
-        record2 = np.array(record2)
-        logger.warning("Average reward of each elevator: {}".format(np.mean(record2, axis=0)))
-
-    # Initialize environment
-    env                = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
-    s                  = env.reset()
+    env = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
     obssize            = env.observation_space_size
     actsize            = env.action_space_size
     logger.warning("Action size: {:5d}, State size: {:5d}".format(actsize, obssize))
-    # TOOD: God's eye obssize
-
     ## Initialize Tensorflow/network stuff
     sess               = tf.Session()
     actors = []
@@ -241,103 +190,60 @@ if __name__=="__main__":
 
     # Load saved model
     CHECKPOINT_DIR = "./ckpts/" # specify path to the checkpoint file
-    if not os.path.exists(CHECKPOINT_DIR):
-        os.makedirs(CHECKPOINT_DIR)
     saver = tf.train.Saver()
     sess.run(tf.global_variables_initializer())
     # Load a previous checkpoint if it exists
     latest_checkpoint = tf.train.latest_checkpoint(CHECKPOINT_DIR)
-    if latest_checkpoint:
-        print("Loading model checkpoint: {}".format(latest_checkpoint))
-        saver.restore(sess, latest_checkpoint)
+    print("Loading model checkpoint: {}".format(latest_checkpoint))
+    saver.restore(sess, latest_checkpoint)
 
-    # main iteration
-    for ite in range(iterations):    
-        if ite%1 == 0:
-            logger.warning("Iteration:%d"%(ite))
-        if ite%5 == 0:
-            saver.save(sess, CHECKPOINT_DIR+"model_{}.ckpt".format(ite))
-            print("MODEL SAVED AT ITERATION", ite)
-        
-        OBS  = {agent:[] for agent in range(nElevator)}  # observations
-        ACTS = {agent:[] for agent in range(nElevator)}  # actions
-        ADS  = {agent:[] for agent in range(nElevator)}  # advantages for actors
-        TARGETS  = {agent:[] for agent in range(nElevator)}  # targets for critics
+    eval_mode = True
 
-        for num in range(numtrajs):
-            # record for each episode
-            obss = {agent:[] for agent in range(nElevator)}  # observations
-            acts = {agent:[] for agent in range(nElevator)}  # actions
-            rews = {agent:[] for agent in range(nElevator)}  # instant rewards for the previous episode!!
+    obs = env.reset()
+    done = False
+    rsum = {agent: 0 for agent in range(nElevator)}
+    while env.now()<3600*episode_length:
+        decision_agents  = obs["decision agents"]
+        states           = obs["states"]
+        rewards          = obs["rewards"]
+        env.render()
+        parsed_states = gym.Environment.parse_states(states[0], nFloor, nElevator)
 
-            obs = env.reset()
+        logger.info("Rewards of decision elevators: {}".format(rewards))
 
-            done = False
-            epi_step = 0
-            while env.now()<3600*episode_length:
-                epi_step += 1
-                decision_agents  = obs["decision agents"]
-                states           = obs["states"]
-                rewards          = obs["rewards"]
-                actions = []
-                # take actions
-                for idx, agent in enumerate(decision_agents):
-                    legal_actions = list(env.legal_actions(agent))
-                    prob   = actors[agent].compute_prob(np.expand_dims(states[idx],0)).flatten()
-                    print("Ouptut probabilities", prob)
-                    prob   = np.array([prob[i] for i in legal_actions])
-                    if sum(prob)<1e-8:
-                        prob = np.ones(len(legal_actions))
-                    prob   = prob/sum(prob)
-                    print("legal probabilities", prob)
+        logger.info("  hall_calls_up: \n"+"".join([
+            "{:8.3}".format(t) for t in parsed_states["hall_call_up_times"]
+        ]))
 
-                    action = np.random.choice(legal_actions, p=prob, size=1)
-                    actions.append(action[0])
+        logger.info("  hall_calls_down: \n"+"".join([
+            "{:8.3}".format(t) for t in parsed_states["hall_call_down_times"]
+        ]))
+        logger.info("Floor requests from within elevator {}:\n{}".format(
+            decision_agents[0], parsed_states['requested_calls']
+        ))
 
-                # record
-                for idx, agent in enumerate(decision_agents):
-                    obss[agent].append(states[idx])
-                    acts[agent].append(actions[idx])
-                    rews[agent].append(-rewards[idx])
-                
-                newobs = env.step(actions)
+        logger.info("Number of passengers served:{}".format(env.nPassenger_served))
+        logger.info("Average waiting time of served passengers: {}".format(env.avg_wait_time()))
+        actions = []
+        # take actions
+        for idx, agent in enumerate(decision_agents):
+            legal_actions = list(env.legal_actions(agent))
+            prob   = actors[agent].compute_prob(np.expand_dims(states[idx],0)).flatten()
+            print("COmputed probability vector", prob)
+            prob   = np.array([prob[i] for i in legal_actions])
+            if sum(prob)==0:
+                prob = np.ones(len(legal_actions))
+            prob   = prob/sum(prob)
+            act_prob = {act:prob[idx] for idx, act in enumerate(legal_actions)}
+            print("Decision agent {} has action probabilities {}".format(agent, act_prob))
 
-                # update
-                obs = newobs
-            # discard the first reward and the last actions
-            # because each round the reward we observe correspond to the previous episode
-            # We keep the last state because it serves as the next_state to the second to last state
-            logger.warning("Episode lasted: {:5d} step!".format(epi_step))
-            for agent in range(nElevator):
-                acts[agent] = acts[agent][:-1]
-                rews[agent] = rews[agent][1: ]
-                
-            # compute discount sum of rewards from instant rewards
-            returns         = {agent: discounted_rewards(rews[agent], gamma) for agent in rews}
-            # compute the gaes 
-            vals            = {agent: critics[agent].compute_values(ob) for agent, ob in obss.items()}
-            bellman_errors  = {agent: np.array(rews[agent]) + (gamma*val[1:] - val[:-1]).reshape(-1) for agent, val in vals.items()}
-            GAE             = {agent: discounted_rewards(errors, gamma*lmbda) for agent, errors in bellman_errors.items()}
-            
-            # record for batch update
-            for agent in range(nElevator):
-                TARGETS[agent] += returns[agent]
-                OBS[agent] += obss[agent][:-1]
-                ACTS[agent] += acts[agent]
-                ADS[agent] += GAE[agent]
-        
-        # update baseline
-        for agent in range(nElevator):
-            TARGETS[agent]  = np.array(TARGETS[agent])
-            OBS[agent]      = np.array(OBS[agent])
-            ACTS[agent]     = np.array(ACTS[agent])
-            ADS[agent]      = np.array(ADS[agent])
-            critics[agent].train(OBS[agent], np.reshape(TARGETS[agent], [-1,1]))
-        
-            # update policy
-            old_prob = actors[agent].compute_prob(OBS[agent])
-            actors[agent].train(OBS[agent], ACTS[agent], ADS[agent], old_prob)  # update
-        if ite%5 == 0:
-            eval_func()
+            action = np.random.choice(legal_actions, p=prob, size=1)
+            actions.append(action[0])
 
-
+        # record
+        for idx, agent in enumerate(decision_agents):
+            rsum[agent] += rewards[idx]
+        logger.info("Sum of reward for each agent: {}".format([rsum[agent] for agent in range(nElevator)]))
+        time.sleep(0.5)
+        newobs = env.step(actions)
+        obs = newobs
