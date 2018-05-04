@@ -1,0 +1,23 @@
+nElevator =  1
+nFloor =  5
+Learning Rate =  1e-4
+Simulation Hours =  750
+Q-Learning Factor =  0.992
+Output File Path =  ./checkpoints/1E5F/test.ckpt
+Input File Path =  ./checkpoints/1E5F/test.ckpt
+Debug Mode =  True
+
+It learned to wait till many ppl are waiting, and then send all of them to their destinations,
+then wait again for the many ppl waiting scenario
+
+It learned to handle heavy traffic!!
+
+It doesn't have too much experience with few ppl waiting case. So that it just accumulate waiting
+ppl before making decisions
+might need to tune down learning Rate
+also set standard deviation before the softmax layer to be 0.01 to make sure enough randomness is given
+at the beginning.
+
+also use the correct simulation_hours + Q-learning factor pair
+
+But weird, from the state it observes, it cannot tell the difference between all floors having 2 ppl waiting from each floor having 20 ppl waiting????
