@@ -32,7 +32,8 @@ if __name__=="__main__":
 env = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
 obssize = env.observation_space_size
 actsize = env.action_space_size
-eval_hours = 3
+# specify number of hours to evaluate model
+eval_hours = 30
 
 # initialize tensorflow session
 sess = tf.Session()
@@ -63,13 +64,16 @@ while env.now() <= eval_hours * 3600:
     for i in range(len(decision_agents)):
         agent = decision_agents[i]
         # agent makes an action choice
-        prob_dist = np.zeros(actsize)
-        q_vals = Q[agent].compute_Qvalues([ss[i]])[0]
-        for a in env.legal_actions(agent):
-            q_val = q_vals[a] # Qi(s,a)
-            prob_dist[a] = np.exp(q_val)
-        prob_dist = prob_dist/sum(prob_dist)
-        action = np.random.choice(actsize, p = prob_dist)
+        legal_actions_bool = np.full(actsize, False)
+        for action in env.legal_actions(agent):
+            legal_actions_bool[action] = True
+        prob_dist = Q[agent].compute_legal_action_prob_dist([ss[i]], legal_actions_bool, 0.000001) 
+        print(prob_dist)
+
+        legal_actions_list = list(env.legal_actions(agent))
+        legal_actions_list.sort()
+        action = np.random.choice(legal_actions_list, p = prob_dist)
+        # update prev_actions and prev_states lists
         actions.append(action)
 
     env_state_dict = timed_function(env.step)(actions)

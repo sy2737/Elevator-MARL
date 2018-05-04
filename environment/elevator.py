@@ -25,18 +25,18 @@ class Elevator():
     action_space = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     action_space_size = 10
     def __init__(self, env, init_floor, weightLimit, id):
-        self.env = env
-        self.floor = init_floor
-        self.requested_fls = set()
-        self.carrying = set()
-        self.carrying_weight = 0
-        self.weight_limit = weightLimit
-        self.state = self.IDLE
-        self.intent = self.INTENT_IDLE
-        self.id = id
-        self.current_loss = 0
-        self.last_decision_epoch = self.env.simenv.now
-        self.logger = get_my_logger("Elevator_{}".format(self.id))
+        self.env                    = env
+        self.floor                  = init_floor
+        self.requested_fls          = set()
+        self.carrying               = set()
+        self.carrying_weight        = 0
+        self.weight_limit           = weightLimit
+        self.state                  = self.IDLE
+        self.intent                 = self.INTENT_IDLE
+        self.id                     = id
+        self.current_loss           = 0
+        self.last_decision_epoch    = self.env.simenv.now
+        self.logger                 = get_my_logger("Elevator_{}".format(self.id))
 
         self.ACTION_FUNCTION_MAP = {
             0: self._move_move,
@@ -109,7 +109,7 @@ class Elevator():
                 self.logger.debug("Elevator {} is about to idle!".format(self.id))
                 yield self.idling_event
             except simpy.Interrupt:
-                self.logger.info("Elevator {} is interrupted!".format(self.id))
+                self.logger.debug("Elevator {} is interrupted!".format(self.id))
                 # Interrupted, so decision epoch came early...
                 self.env.trigger_epoch_event("ElevatorArrival_{}".format(self.id))
 
@@ -277,7 +277,7 @@ class Elevator():
             [self.carrying_weight],
             time_elapsed
         ])
-        assert len(state_representation)==self.env.observation_space_size, "should probably modify the obs_space in env.py to match the state output of Elevator.get_states()"
+        #assert len(state_representation)==self.env.observation_space_size, "should probably modify the obs_space in env.py to match the state output of Elevator.get_states()"
         if decision_epoch:
             self.last_decision_epoch = self.env.simenv.now
         return state_representation
