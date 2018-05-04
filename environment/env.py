@@ -36,18 +36,16 @@ class Environment():
     to act at decision epochs (certain specific types of events)
     '''
     def __init__(self, simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime):
-        self.simenv = simenv
-        self.nElevator = nElevator
-        self.nFloor = nFloor
-        self.spawnRates = spawnRates
-        self.avgWeight = avgWeight
+        self.simenv      = simenv
+        self.nElevator   = nElevator
+        self.nFloor      = nFloor
+        self.spawnRates  = spawnRates
+        self.avgWeight   = avgWeight
         self.weightLimit = weightLimit
-        self.loadTime = loadTime
+        self.loadTime    = loadTime
+        self.reward_discount = 0.01
+        self.logger = get_my_logger(self.__class__.__name__)
 
-        self.elevators = None
-        self.epoch_events = None
-        self.psngr_by_fl= {floor:set() for floor in range(nFloor)}
-        self.decision_elevators = []
         self.action_space = Elevator.action_space
         self.action_space_size = Elevator.action_space_size
         # Need to manually change this...
@@ -57,17 +55,9 @@ class Environment():
         # requested_calls
         # carrying_weight
         # time_elapsed
-        self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + nFloor + 1 + 1
-        self.nPassenger_served = 0
-        self.wait_time_of_served = 0
-
-
-        self.last_reward_time = 0
-        self.reward_discount = 0.01
-        self._elevator_candidate = 0
-        self.logger = get_my_logger(self.__class__.__name__)
-        
-        pass
+        initial_states,_,_ = self.reset().items()
+        #self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + nFloor + 1 + 1
+        self.observation_space_size = len(initial_states[1][0])
 
     def step(self, actions):
         '''Steps through the simulation until the next decision epoch is reached
@@ -109,7 +99,7 @@ class Environment():
             if decision:
                 break
 
-        self.logger.info("Decision epoch triggered at time {:8.3f}, by event type: {}".format(
+        self.logger.debug("Decision epoch triggered at time {:8.3f}, by event type: {}".format(
             self.simenv.now, [event.value for event in finished_events])
         )
         output = {
@@ -186,16 +176,6 @@ class Environment():
         i.e. elevators shouldn't be able to see how many passengers there are on 
              each floor
         '''
-        #elevator_positions = [e.floor for e in self.elevators]
-        #elevator_states = [e.state for e in self.elevators]
-
-        #return {
-        #    "hall_calls_up": self.hall_calls_up,
-        #    "hall_calls_down": self.hall_calls_down,
-        #    "elevator_positions": elevator_positions,
-        #    "elevator_states": elevator_states,
-        #    "decision_elevators": self.decision_elevators,
-        #}
         return [self.elevators[idx].get_states(decision_epoch) for idx in elevator_idxes]
     
     def get_rewards(self, elevator_idxes, decision_epoch):
@@ -208,20 +188,16 @@ class Environment():
           - simluation environment
           - decision_epoch events
         '''
-        self.elevators = None
-        self.epoch_events = None
-        self.psngr_by_fl= {floor:set() for floor in range(self.nFloor)}
-        self.decision_elevators = []
-        self.nPassenger_served = 0
+        self.psngr_by_fl         = {floor:set() for floor in range(self.nFloor)}
+        self.decision_elevators  = []
+        self.nPassenger_served   = 0
         self.wait_time_of_served = 0
-        self.last_reward_time = 0
-        self.reward_discount = 0.01
+        self.last_reward_time    = 0
         self._elevator_candidate = 0
 
         self.simenv = simpy.Environment()
         self.simenv.process(self.passenger_generator())
         self.elevators = [Elevator(self, 0, self.weightLimit, id) for id in range(self.nElevator)]
-        # TODO: will need to modify this part to differentiate different elevators
         self.epoch_events = {
             "PassengerArrival": self.simenv.event(),
         }
@@ -319,14 +295,12 @@ class Environment():
             string+="v"*num_psngr_going_down
             print(string)
 
-
     def update_all_loss(self):
         # Add incremental loss to all elevators and update the last_reward_time
         for e in self.elevators:
             e.update_loss(self.calculate_loss(e.last_decision_epoch))
         self.last_reward_time = self.simenv.now
         return True
-
 
     def calculate_loss(self, d):
         '''
