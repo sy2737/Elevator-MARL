@@ -1,0 +1,9 @@
+1. adjust num hidden layers according to actsize
+2. in terminal control whether train from scratch (+destination for file saving);
+   or train using existing graph (+existing graph destination)
+   number of simulation hours to train; after how long resave updated graph
+
+   number of simulation hours before reset environment
+
+3. in terminal control eval, which saved graph to use,
+   number of simulation hours to evaluate
