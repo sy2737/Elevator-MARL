@@ -18,4 +18,7 @@ to enter the elevator or not).
 
    When the Loading Finished event is triggered, the elevator needs to choose an action among actions that correspond to
 its' declared intent.(For example, if the intent was MOVING_UP, then it choose between IDLE_UP_IDLE, or IDLE_UP_MOVE, basically whether
-it wants to stop at the next floor up or not. This changes how much time it takes to move to the next floor.)
+it wants to stop at the next floor up or not. This changes how much time it takes to move to the next floor.)  
+
+
+Error will be thrown if illegal action is passed into the environment. Otherthan that the environment does not impose any constraint on what the elevators can choose to do.
