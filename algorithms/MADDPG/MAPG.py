@@ -10,6 +10,7 @@ import numpy as np
 import logging
 import time
 import os
+import random
 logger = gym.logger.get_my_logger(__name__)
 
 
@@ -21,21 +22,21 @@ class Actor():
         actsize: size of the actions
         """
         # Building the prediction graph
-        L = 50
-        #M = 20
+        L = 100
+        M = 50
         state = tf.placeholder(tf.float32, [None, obssize])
         W1 = tf.Variable(tf.truncated_normal([obssize, L],stddev=0.01))
         B1 = tf.Variable(tf.truncated_normal([L], stddev=0.01))
-        W2 = tf.Variable(tf.truncated_normal([L, actsize],stddev=0.01))
-        B2 = tf.Variable(tf.truncated_normal([actsize], stddev=0.01))
-        #W3 = tf.Variable(tf.truncated_normal([M, actsize],stddev=0.01))
-        #B3 = tf.Variable(tf.truncated_normal([actsize], stddev=0.01))
+        W2 = tf.Variable(tf.truncated_normal([L, M],stddev=0.01))
+        B2 = tf.Variable(tf.truncated_normal([M], stddev=0.01))
+        W3 = tf.Variable(tf.truncated_normal([M, actsize],stddev=0.01))
+        B3 = tf.Variable(tf.truncated_normal([actsize], stddev=0.01))
         
         
         Z1 = tf.sigmoid(tf.matmul(state, W1) + B1)
-        #Z2 = tf.sigmoid(tf.matmul(Z1, W2) + B2)
-        #logit = tf.matmul(Z2, W3) + B3
-        logit = tf.matmul(Z1, W2) + B2
+        Z2 = tf.sigmoid(tf.matmul(Z1, W2) + B2)
+        logit = tf.matmul(Z2, W3) + B3
+        #logit = tf.matmul(Z1, W2) + B2
         
         # An array of legal action representation (legal=1, illegal=0)
         legal_actions = tf.placeholder(tf.float32, shape=[None,actsize])
@@ -59,11 +60,11 @@ class Actor():
         old_prob_i = tf.reduce_sum(tf.multiply(old_prob, actions_one_hot), axis=1)
         
         ratio = tf.divide(prob_i, old_prob_i)
-        
+
         surrogate_loss = tf.negative(tf.reduce_mean(tf.minimum(
             tf.multiply(ratio, Q_estimate),
             tf.multiply(tf.clip_by_value(ratio, 1-clip_eps, 1+clip_eps), Q_estimate)
-        )))
+        ))) + tf.reduce_sum(prob*tf.log(prob + 1e-9))
         
         
         self.train_op = optimizer.minimize(surrogate_loss, global_step = global_step)
@@ -158,14 +159,15 @@ def discounted_rewards(r, lmbda):
     return list(discounted_r)
 
 def eval_func(actors, actsize, nElevator, env):
-    eval_episodes = 10
+    eval_episodes = 15
     record = [] #avg wait time of served passengers from each trajectory
     record2 = [] #avg reward for each elevator in each trajectory
     record3 = [] #avg number of passengers served
     for ite in range(eval_episodes):
+        env.spawnRates = spawnRates
         obs = env.reset()
         rsum = {agent: 0 for agent in range(nElevator)}
-        while env.now()<3600*episode_length:
+        while env.now()<3600*1:
             decision_agents  = obs["decision agents"]
             states           = obs["states"]
             rewards          = obs["rewards"]
@@ -207,33 +209,33 @@ def eval_func(actors, actsize, nElevator, env):
             #logger.info("=======================================================================")
             newobs = env.step(actions)
             obs = newobs
-        logger.info("Total passengers served: {}".format(env.nPassenger_served))
+        #logger.info("Total passengers served: {}".format(env.nPassenger_served))
         record.append(env.avg_wait_time())
         record2.append([rsum[agent] for agent in range(nElevator)])
         record3.append(env.nPassenger_served)
-    logger.warning("{:40s}: {}".format("Avg wait time of passegners in each episode", np.round(record)))
+    logger.warning("{:40s}: {}, Average:{}".format("Avg wait time of passegners in each episode", np.round(record), np.mean(record)))
     record2 = np.array(record2)
-    logger.warning("{:40s}: {}".format("Average reward of elevators in each episode", np.round(np.mean(record2, axis=1))))
-    logger.warning("{:40s}: {}".format("Number of Passengers served in each episode", record3))
+    logger.warning("{:40s}: {}, Average:{}".format("Average reward of elevators in each episode", np.round(np.mean(record2, axis=1)), np.mean(record2)))
+    logger.warning("{:40s}: {}, Average:{}".format("Number of Passengers served in each episode", record3, np.mean(record3)))
 
 if __name__=="__main__":
     logging.disable(logging.DEBUG)
 
     # Network parameters
-    starter_learning_rate      = 3e-4
-    lr_alpha                   = 3e-5 # tf.train.exponential_decay(starter_learning_rate, global_step_alpha, 100, 0.95, staircase=True)
+    #starter_learning_rate      = 3e-4
+    lr_alpha                   = 3e-4 # tf.train.exponential_decay(starter_learning_rate, global_step_alpha, 100, 0.95, staircase=True)
     lr_beta                    = 3e-5 # tf.train.exponential_decay(starter_learning_rate, global_step_beta, 100, 0.95, staircase=True)
-    numtrajs                   = 10   # num of trajecories to collect at each iteration 
-    episode_length             = 1    # Number of hours to run the episode for
-    iterations                 = 500  # total num of iterations
-    gamma                      = 1    # discount
-    lmbda                      = 1    # GAE estimation factor
+    numtrajs                   = 32   # num of trajecories to collect at each iteration 
+    episode_length             = 2    # Number of hours to run the episode for
+    iterations                 = 1000 # total num of iterations
+    gamma                      = 0.99 # discount
+    lmbda                      = 0.5    # GAE estimation factor
     clip_eps                   = 0.2
-    step_per_train             = 5
+    step_per_train             = 3
 
     # Environment parameters
     nElevator          = 1
-    nFloor             = 3
+    nFloor             = 4
     spawnRates         = [1/60]+[1/120]*(nFloor-1)
     avgWeight          = 135
     weightLimit        = 1200
@@ -241,7 +243,7 @@ if __name__=="__main__":
 
 
     # Initialize environment
-    env                = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
+    env                = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, 1)
     s                  = env.reset()
     obssize            = env.observation_space_size
     actsize            = env.action_space_size
@@ -294,10 +296,13 @@ if __name__=="__main__":
             rews = {agent:[] for agent in range(nElevator)}  # instant rewards for one trajectory
             legal_acts = {agent:[] for agent in range(nElevator)} # legal actions encoded in 0's and 1's
 
+            env.spawnRates = spawnRates
             obs = env.reset()
 
-            # TODO: some sort of done = False logic?
             epi_step = 0
+            # Randomly step through the environment for some steps before officially starting to train
+            random_start = np.random.randint(50,1000)
+            seen_psngr = False
             while env.now()<3600*episode_length:
                 epi_step += 1
                 decision_agents  = obs["decision agents"]
@@ -306,6 +311,16 @@ if __name__=="__main__":
                 actions          = []
                 b_legal_actions  = [] # Boolean legal actions for one decision epoch! from all agents
                 # take actions
+                if epi_step <= random_start:
+                    actions = [random.sample(env.legal_actions(agent), 1)[0] for agent in decision_agents]
+                    newobs = env.step(actions)
+                    obs = newobs
+                    continue
+                #if epi_step == random_start+1:
+                #    print("randomly started at step", epi_step)
+                #    env.render()
+                env.spawnRates = np.zeros(env.nFloor)
+                
                 for idx, agent in enumerate(decision_agents):
                     # Obtain legal actinos and encode them into 1's and 0's
                     legal_actions                        = sorted(list(env.legal_actions(agent)))
@@ -313,7 +328,7 @@ if __name__=="__main__":
                     boolean_legal_actions[legal_actions] = 1
                     # Probability over all actions (but illegal ones will have probability of zero)
                     prob   = actors[agent].compute_prob(np.expand_dims(states[idx],0), np.expand_dims(boolean_legal_actions, 0)).flatten()
-                    action = np.random.choice(np.arange(actsize), p=prob, size=1)[0]
+                    action = np.random.choice(np.arange(actsize), p=prob)
                     actions.append(action)
                     b_legal_actions.append(boolean_legal_actions)
 
@@ -321,10 +336,18 @@ if __name__=="__main__":
                 for idx, agent in enumerate(decision_agents):
                     obss[agent].append(states[idx])
                     acts[agent].append(actions[idx])
-                    rews[agent].append(-rewards[idx]) # Negative reward because the environment returns cost
+                    rews[agent].append(rewards[idx]) # Need to add negation reward if the environment returns cost not reward
                     legal_acts[agent].append(b_legal_actions[idx])
                 
                 # update
+                if env.no_passenger():
+                    if seen_psngr:
+                        #print("Took {} to reach empty state".format(epi_step-random_start))
+                        #env.render()
+                        break
+                else:
+                    seen_psngr = True
+
                 newobs = env.step(actions)
                 obs = newobs
 
@@ -340,10 +363,14 @@ if __name__=="__main__":
                 
             # Compute discount sum of rewards from instant rewards
             returns         = {agent: discounted_rewards(rews[agent], gamma) for agent in rews}
+            #print("returns of one traject:", returns)
             # Compute the GAE
             vals            = {agent: critics[agent].compute_values(ob) for agent, ob in obss.items()}
             bellman_errors  = {agent: np.array(rews[agent]) + (gamma*val[1:] - val[:-1]).reshape(-1) for agent, val in vals.items()}
             GAE             = {agent: discounted_rewards(errors, gamma*lmbda) for agent, errors in bellman_errors.items()}
+            # The last val is the value estimation of last state, which we discard
+            #GAE             = {agent: list(np.array(returns[agent]) - v.flatten()[:-1]) for agent,v in vals.items()}
+            #print("Advantage estimation:", GAE)
             
             # Record for batch update
             for agent in range(nElevator):
@@ -366,7 +393,7 @@ if __name__=="__main__":
             old_prob      = actors[agent].compute_prob(OBS[agent], legal_actions)
             actors[agent].train(OBS[agent], ACTS[agent], ADS[agent], old_prob, legal_actions)  # update
 
-        if ite%10 == 0:
+        if ite%20 == 0:
             eval_func(actors, actsize, nElevator, env)
 
 
