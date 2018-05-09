@@ -34,7 +34,7 @@ class Elevator():
         self.state                  = self.IDLE
         self.intent                 = self.INTENT_IDLE
         self.id                     = id
-        self.current_loss           = 0
+        self.current_reward         = 0
         self.last_decision_epoch    = self.env.simenv.now
         self.logger                 = get_my_logger("Elevator_{}".format(self.id))
 
@@ -224,15 +224,15 @@ class Elevator():
                 legal.remove(0)
         return legal
 
-    def update_loss(self, loss):
-        # Update the loss inccurred since the last decision epoch
-        self.current_loss += loss
+    def update_reward(self, reward):
+        # Update the reward inccurred since the last decision epoch
+        self.current_reward += reward
         return True
 
-    def get_loss(self, decision_epoch):
-        output = self.current_loss
+    def get_reward(self, decision_epoch):
+        output = self.current_reward
         if decision_epoch:
-            self.current_loss = 0
+            self.current_reward = 0
         return output
 
     def _one_hot_encode(self, x, values):
@@ -269,8 +269,8 @@ class Elevator():
         state_representation = np.concatenate([
             self.env.hall_calls_up,
             self.env.hall_calls_down,
-            hall_call_up_times,
-            hall_call_down_times,
+            #hall_call_up_times,
+            #hall_call_down_times,
             onehot_elevator_positions,
             onehot_elevator_states,
             requested_calls,

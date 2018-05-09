@@ -30,13 +30,13 @@ if __name__=="__main__":
 
     # Environment parameters
     nElevator          = 1
-    nFloor             = 3
+    nFloor             = 4
     spawnRates         = [1/60]+[1/120]*(nFloor-1)
     avgWeight          = 135
     weightLimit        = 1200
     loadTime           = 1
 
-    env = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
+    env = gym.make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, 0)
     obssize            = env.observation_space_size
     actsize            = env.action_space_size
     logger.warning("Action size: {:5d}, State size: {:5d}".format(actsize, obssize))
@@ -75,11 +75,11 @@ if __name__=="__main__":
         logger.info("{:40s}: {}".format("Rewards of decision elevators",rewards))
 
         logger.info("{:40s}: {}".format("hall_calls_up", "".join([
-            "{:8.3}".format(t) for t in parsed_states["hall_call_up_times"]
+            "{:8.3}".format(t) for t in parsed_states["hall_calls_up"]
         ])))
 
         logger.info("{:40s}: {}".format("hall_calls_down", "".join([
-            "{:8.3}".format(t) for t in parsed_states["hall_call_down_times"]
+            "{:8.3}".format(t) for t in parsed_states["hall_calls_down"]
         ])))
         logger.info("{:40s}: {}".format("Floor requests from within elevator {}".format(
             decision_agents[0]), parsed_states['requested_calls']
@@ -103,7 +103,7 @@ if __name__=="__main__":
         for idx, agent in enumerate(decision_agents):
             rsum[agent] += rewards[idx]
         logger.info("Sum of reward for each agent: {}".format([rsum[agent] for agent in range(nElevator)]))
-        time.sleep(0.1)
+        time.sleep(0.5)
         logger.info("=======================================================================")
         newobs = env.step(actions)
         obs = newobs

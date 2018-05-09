@@ -10,7 +10,7 @@ from .passenger import Passenger
 from .elevator import Elevator
 from .logger import get_my_logger
 
-def make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime):
+def make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, version, dst_pref=None):
 
     '''
     nElevator:     Number of elevators
@@ -25,9 +25,14 @@ def make(nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime):
 
     # initializes a simpy environment
     simenv = simpy.Environment()
-
+    if not dst_pref:
+        # Uniform
+        dst_pref = {fl:np.ones(nFloor-1)/(nFloor-1) for fl in range(nFloor)}
     # Returns an Environment instance
-    return Environment(simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime)
+    if version == 0:
+        return Environment(simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, dst_pref)
+    elif version == 1:
+        return Environment_v1(simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, dst_pref)
 
     
 class Environment():
@@ -35,7 +40,7 @@ class Environment():
     controls the simulation, allows outside controllers (policies)
     to act at decision epochs (certain specific types of events)
     '''
-    def __init__(self, simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime):
+    def __init__(self, simenv, nElevator, nFloor, spawnRates, avgWeight, weightLimit, loadTime, dst_pref=None):
         self.simenv      = simenv
         self.nElevator   = nElevator
         self.nFloor      = nFloor
@@ -44,19 +49,14 @@ class Environment():
         self.weightLimit = weightLimit
         self.loadTime    = loadTime
         self.reward_discount = 0.01
+        self.dst_pref    = dst_pref
         self.logger = get_my_logger(self.__class__.__name__)
 
         self.action_space = Elevator.action_space
         self.action_space_size = Elevator.action_space_size
-        # Need to manually change this...
-        # hall_calls_up, hall_calls_down, hall_call_up_times, hall_call_down_times
-        # onehot_elevator_positions (nFloor positions)
-        # onehot_elevator_states (3 states)
-        # requested_calls
-        # carrying_weight
-        # time_elapsed
+
+        # Initialize environment so that we have state size
         initial_states,_,_ = self.reset().items()
-        #self.observation_space_size = nFloor*4 + nFloor*nElevator + 3*nElevator + nFloor + 1 + 1
         self.observation_space_size = len(initial_states[1][0])
 
     def step(self, actions):
@@ -79,7 +79,7 @@ class Environment():
         while True:
             self.decision_elevators = []
             finished_events = self.simenv.run(until=AnyOf(self.simenv, self.epoch_events.values())).events
-            self.update_all_loss()
+            self.update_all_reward()
             # There can be multiple events finished (when passenger arrives and multiple elevators go into decision mode)
 
             # Here is where we process the events
@@ -179,7 +179,7 @@ class Environment():
         return [self.elevators[idx].get_states(decision_epoch) for idx in elevator_idxes]
     
     def get_rewards(self, elevator_idxes, decision_epoch):
-        return [self.elevators[idx].get_loss(decision_epoch) for idx in elevator_idxes]
+        return [self.elevators[idx].get_reward(decision_epoch) for idx in elevator_idxes]
 
 
     def reset(self):
@@ -197,7 +197,7 @@ class Environment():
 
         self.simenv = simpy.Environment()
         self.simenv.process(self.passenger_generator())
-        self.elevators = [Elevator(self, 0, self.weightLimit, id) for id in range(self.nElevator)]
+        self.elevators = [Elevator(self, np.random.choice(np.arange(self.nFloor)), self.weightLimit, id) for id in range(self.nElevator)]
         self.epoch_events = {
             "PassengerArrival": self.simenv.event(),
         }
@@ -250,9 +250,15 @@ class Environment():
     def passenger_generator(self):
         while True:
             # Keeps generating new passengers
-            yield self.simenv.timeout(random.expovariate(sum(self.spawnRates)))
+            if sum(self.spawnRates) == 0:
+                yield self.simenv.event()
+            else:
+                yield self.simenv.timeout(random.expovariate(sum(self.spawnRates)))
             self.logger.debug("generating new passenger! at time {}".format(self.simenv.now))
-            floor = random.choices(range(self.nFloor), self.spawnRates)[0]
+            if sum(self.spawnRates) == 0:
+                floor = random.choices(range(self.nFloor), [1]*self.nFloor)[0]
+            else:
+                floor = random.choices(range(self.nFloor), self.spawnRates)[0]
             # Weight is normally distributed 
             self.psngr_by_fl[floor].add(
                 Passenger(
@@ -262,15 +268,16 @@ class Environment():
             if len(self.psngr_by_fl[floor])>=1:
                 self.trigger_epoch_event("PassengerArrival")
 
+    def set_spawnRates(self, spawnRates):
+        self.spawnRates = spawnRates
 
     def _destination(self, starting_floor):
         '''
         Generates destination given starting floor
         '''
-        # TODO: this distribution needs to be more sophisticated. ie: first floor
         options = set(range(self.nFloor))
         options.remove(starting_floor)
-        return random.sample(options, 1)[0]
+        return np.random.choice(list(options), p=self.dst_pref[starting_floor])
     
     def legal_actions(self, idx):
         return self.elevators[idx].legal_actions()
@@ -295,26 +302,26 @@ class Environment():
             string+="v"*num_psngr_going_down
             print(string)
 
-    def update_all_loss(self):
-        # Add incremental loss to all elevators and update the last_reward_time
+    def update_all_reward(self):
+        # Add incremental reward to all elevators and update the last_reward_time
+        # The elevators will store the sum of all the rewards in one decision period
         for e in self.elevators:
-            e.update_loss(self.calculate_loss(e.last_decision_epoch))
+            e.update_reward(self.calculate_reward(e.last_decision_epoch))
         self.last_reward_time = self.simenv.now
         return True
 
-    def calculate_loss(self, d):
+    def calculate_reward(self, d):
         '''
         Input:
             d: last decision time of the elevator
         Output:
-            the incremental loss that need incurred between last 
-            reward calculation time and now
+            the incremental reward received between last reward calculation time and now
         '''
         output = 0
         # First calculate for all passengers in hall ways
         for fl in range(self.nFloor):
             for p in self.psngr_by_fl[fl]:
-                output += self._calculate_loss(
+                output += self._calculate_reward(
                               d, self.last_reward_time, self.simenv.now, 
                               self.last_reward_time-p.created_at, self.simenv.now-p.created_at
                           )
@@ -322,14 +329,14 @@ class Environment():
         # Then calculate for all passengers in elevators
         for e in self.elevators:
             for p in e.carrying:
-                output += self._calculate_loss(
+                output += self._calculate_reward(
                               d, self.last_reward_time, self.simenv.now, 
                               self.last_reward_time-p.created_at, self.simenv.now-p.created_at
                           )
 
         return output*1e-6
 
-    def _calculate_loss(self, d, t0, t1, w0, w1):
+    def _calculate_reward(self, d, t0, t1, w0, w1):
         return Exp(-self.reward_discount*(t0-d))\
                * (2/self.reward_discount**3 + 2*w0/self.reward_discount**2 + w0**2/self.reward_discount)\
                - Exp(-self.reward_discount*(t1-d))\
@@ -340,26 +347,43 @@ class Environment():
             return self.wait_time_of_served/self.nPassenger_served
         return -1
 
+    def no_passenger(self):
+        # First check for all passengers in hall ways
+        for fl in range(self.nFloor):
+            if len(self.psngr_by_fl[fl])>0:
+                return False
+        # Then check for all passengers in elevators
+        for e in self.elevators:
+            if len(e.carrying)>0:
+                return False
+        return True
+
     @staticmethod
     def parse_states(state, nFloor, nElevator):
         '''Returns a dictionary of parsed state vector'''
         hall_calls_up = state[0:nFloor]
         hall_calls_down = state[nFloor:nFloor*2]
-        hall_call_up_times = state[nFloor*2:nFloor*3]
-        hall_call_down_times = state[nFloor*3:nFloor*4]
-        onehot_elevator_positions = state[nFloor*4:(nFloor*4+nElevator*nFloor)].reshape(nElevator,nFloor)
+        #hall_call_up_times = state[nFloor*2:nFloor*3]
+        #hall_call_down_times = state[nFloor*3:nFloor*4]
+        #onehot_elevator_positions = state[nFloor*4:(nFloor*4+nElevator*nFloor)].reshape(nElevator,nFloor)
+        #onehot_elevator_states = state[
+        #    (nFloor*4+nElevator*nFloor):
+        #    ((nFloor*4+nElevator*nFloor)+(nElevator*Elevator.nState))
+        #]
+        #requested_calls = state[((nFloor*4+nElevator*nFloor)+(nElevator*Elevator.nState)): -2]
+        onehot_elevator_positions = state[nFloor*2:(nFloor*2+nElevator*nFloor)].reshape(nElevator,nFloor)
         onehot_elevator_states = state[
-            (nFloor*4+nElevator*nFloor):
-            ((nFloor*4+nElevator*nFloor)+(nElevator*Elevator.nState))
+            (nFloor*2+nElevator*nFloor):
+            ((nFloor*2+nElevator*nFloor)+(nElevator*Elevator.nState))
         ]
-        requested_calls = state[((nFloor*4+nElevator*nFloor)+(nElevator*Elevator.nState)): -2]
+        requested_calls = state[((nFloor*2+nElevator*nFloor)+(nElevator*Elevator.nState)): -2]
         carrying_weight = state[-2]
         time_elapsed = state[-1]
         return {
             'hall_calls_up':                hall_calls_up,
             'hall_calls_down':              hall_calls_down,
-            'hall_call_up_times':           hall_call_up_times,
-            'hall_call_down_times':         hall_call_down_times,
+            #'hall_call_up_times':           hall_call_up_times,
+            #'hall_call_down_times':         hall_call_down_times,
             'onehot_elevator_positions':    onehot_elevator_positions,
             'onehot_elevator_states':       onehot_elevator_states,
             'requested_calls':              requested_calls,
@@ -368,3 +392,14 @@ class Environment():
         }
 
 
+
+class Environment_v1(Environment):
+    '''
+    Reward is linear in time for as long as there are passengers in the system
+    In other words, reward will be negative unless there is no passenger, in which case it's zero
+    Number of passengers waiting doesn't matter
+    '''
+    def calculate_reward(self, d):
+        if self.no_passenger():
+            return 0
+        return -(self.simenv.now-self.last_reward_time)
